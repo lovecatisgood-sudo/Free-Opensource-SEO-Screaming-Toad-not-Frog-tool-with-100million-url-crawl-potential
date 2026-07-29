@@ -53,6 +53,31 @@ func TestFrontierDeduplicatesAndEnforcesLimit(t *testing.T) {
 	}
 }
 
+func TestEnqueueBatchCommitsUpToLimitAndDeduplicates(t *testing.T) {
+	t.Parallel()
+	frontier, projectID, crawlID := testFrontier(t)
+	ctx := context.Background()
+	first, _ := fetchpolicy.NormalizeURL("https://example.com/a")
+	second, _ := fetchpolicy.NormalizeURL("https://example.com/b")
+	third, _ := fetchpolicy.NormalizeURL("https://example.com/c")
+	inserted, err := frontier.EnqueueBatch(ctx, []Discovery{
+		{CrawlID: crawlID, ProjectID: projectID, URL: first, DiscoveryKind: "link", MaximumURLs: 2},
+		{CrawlID: crawlID, ProjectID: projectID, URL: first, DiscoveryKind: "link", MaximumURLs: 2},
+		{CrawlID: crawlID, ProjectID: projectID, URL: second, DiscoveryKind: "link", MaximumURLs: 2},
+		{CrawlID: crawlID, ProjectID: projectID, URL: third, DiscoveryKind: "link", MaximumURLs: 2},
+	})
+	if inserted != 2 || !errors.Is(err, ErrURLLimitReached) {
+		t.Fatalf("inserted=%d err=%v", inserted, err)
+	}
+	progress, err := frontier.Progress(ctx, crawlID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.Discovered != 2 {
+		t.Fatalf("discovered=%d", progress.Discovered)
+	}
+}
+
 func TestFrontierLeaseRecoversAndCompletes(t *testing.T) {
 	t.Parallel()
 	frontier, projectID, crawlID := testFrontier(t)

@@ -336,35 +336,31 @@ func (e *Engine) commitResult(ctx context.Context, request RunRequest, result wo
 		links = append(links, link.URL)
 	}
 	parent := result.lease.CrawlURLID
+	discoveries := make([]database.Discovery, 0, len(discoveryPage.Links)+len(discoveryPage.Images))
 	for _, raw := range links {
 		normalized, err := fetchpolicy.NormalizeURL(raw)
 		if err != nil || e.Scope.Evaluate(normalized) != nil || DetectTrap(normalized) != "" {
 			continue
 		}
-		_, err = e.Frontier.Enqueue(ctx, database.Discovery{
+		discoveries = append(discoveries, database.Discovery{
 			CrawlID: request.CrawlID, ProjectID: request.ProjectID, URL: normalized,
 			Depth: result.lease.Depth + 1, DiscoveryKind: "link", DiscoveredFrom: &parent,
 			MaximumURLs: request.Limits.MaximumURLs,
 		})
-		if err != nil {
-			return err
-		}
 	}
 	for _, image := range discoveryPage.Images {
 		normalized, err := fetchpolicy.NormalizeURL(image.URL)
 		if err != nil || e.Scope.Evaluate(normalized) != nil {
 			continue
 		}
-		_, err = e.Frontier.Enqueue(ctx, database.Discovery{
+		discoveries = append(discoveries, database.Discovery{
 			CrawlID: request.CrawlID, ProjectID: request.ProjectID, URL: normalized,
 			Depth: result.lease.Depth + 1, DiscoveryKind: "image", DiscoveredFrom: &parent,
 			MaximumURLs: request.Limits.MaximumURLs,
 		})
-		if err != nil {
-			return err
-		}
 	}
-	return nil
+	_, err = e.Frontier.EnqueueBatch(ctx, discoveries)
+	return err
 }
 
 func (e *Engine) failOrRetry(ctx context.Context, crawlID contracts.ID, lease database.Lease, status int, decision *fetchpolicy.RetryDecision, fetchErr error) error {

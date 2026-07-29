@@ -129,52 +129,79 @@ type Discovery struct {
 }
 
 func (f *Frontier) Enqueue(ctx context.Context, discovery Discovery) (bool, error) {
-	if discovery.Depth < 0 || discovery.DiscoveryKind == "" || discovery.MaximumURLs < 1 {
-		return false, errors.New("invalid discovery")
+	inserted, err := f.EnqueueBatch(ctx, []Discovery{discovery})
+	return inserted == 1, err
+}
+
+// EnqueueBatch applies a bounded group of discoveries in one transaction. URL
+// identity and the crawl ceiling remain authoritative in SQLite.
+func (f *Frontier) EnqueueBatch(ctx context.Context, discoveries []Discovery) (int, error) {
+	if len(discoveries) == 0 {
+		return 0, nil
 	}
-	inserted := false
+	if len(discoveries) > 20_000 {
+		return 0, errors.New("discovery batch exceeds 20000 URLs")
+	}
+	for _, discovery := range discoveries {
+		if discovery.CrawlID == "" || discovery.ProjectID == "" || discovery.Depth < 0 || discovery.DiscoveryKind == "" || discovery.MaximumURLs < 1 {
+			return 0, errors.New("invalid discovery")
+		}
+	}
+	inserted := 0
+	limitReached := false
 	err := f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		first := discoveries[0]
 		var current int64
-		if err := tx.QueryRowContext(ctx, "SELECT discovered_count FROM crawl WHERE id = ?", discovery.CrawlID).Scan(&current); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT discovered_count FROM crawl WHERE id = ?", first.CrawlID).Scan(&current); err != nil {
 			return err
 		}
-		var urlID int64
 		now := time.Now().UTC().Format(time.RFC3339Nano)
-		_, err := tx.ExecContext(ctx, `INSERT INTO url(project_id, request_key, original_url, scheme, host, port, path, query, created_at)
+		for _, discovery := range discoveries {
+			if discovery.CrawlID != first.CrawlID || discovery.ProjectID != first.ProjectID || discovery.MaximumURLs != first.MaximumURLs {
+				return errors.New("discovery batch must share crawl, project and limit")
+			}
+			var urlID int64
+			_, err := tx.ExecContext(ctx, `INSERT INTO url(project_id, request_key, original_url, scheme, host, port, path, query, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(project_id, request_key) DO NOTHING`,
-			discovery.ProjectID, discovery.URL.RequestKey, discovery.URL.URL.String(), discovery.URL.URL.Scheme,
-			discovery.URL.URL.Hostname(), discovery.URL.URL.Port(), discovery.URL.URL.EscapedPath(), discovery.URL.URL.RawQuery, now)
-		if err != nil {
-			return err
-		}
-		if err := tx.QueryRowContext(ctx, "SELECT id FROM url WHERE project_id = ? AND request_key = ?", discovery.ProjectID, discovery.URL.RequestKey).Scan(&urlID); err != nil {
-			return err
-		}
-		var exists int
-		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM crawl_url WHERE crawl_id = ? AND url_id = ?", discovery.CrawlID, urlID).Scan(&exists); err != nil {
-			return err
-		}
-		if exists != 0 {
-			return nil
-		}
-		if current >= discovery.MaximumURLs {
-			return ErrURLLimitReached
-		}
-		result, err := tx.ExecContext(ctx, `INSERT INTO crawl_url(crawl_id, url_id, state, depth, discovered_from_id, discovery_kind, created_at, updated_at)
+				discovery.ProjectID, discovery.URL.RequestKey, discovery.URL.URL.String(), discovery.URL.URL.Scheme,
+				discovery.URL.URL.Hostname(), discovery.URL.URL.Port(), discovery.URL.URL.EscapedPath(), discovery.URL.URL.RawQuery, now)
+			if err != nil {
+				return err
+			}
+			if err := tx.QueryRowContext(ctx, "SELECT id FROM url WHERE project_id = ? AND request_key = ?", discovery.ProjectID, discovery.URL.RequestKey).Scan(&urlID); err != nil {
+				return err
+			}
+			var exists int
+			if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM crawl_url WHERE crawl_id = ? AND url_id = ?", discovery.CrawlID, urlID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists != 0 {
+				continue
+			}
+			if current+int64(inserted) >= discovery.MaximumURLs {
+				limitReached = true
+				break
+			}
+			result, err := tx.ExecContext(ctx, `INSERT INTO crawl_url(crawl_id, url_id, state, depth, discovered_from_id, discovery_kind, created_at, updated_at)
             VALUES (?, ?, 'queued', ?, ?, ?, ?, ?)`, discovery.CrawlID, urlID, discovery.Depth, discovery.DiscoveredFrom, discovery.DiscoveryKind, now, now)
-		if err != nil {
+			if err != nil {
+				return err
+			}
+			rows, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			inserted += int(rows)
+		}
+		if inserted > 0 {
+			_, err := tx.ExecContext(ctx, "UPDATE crawl SET discovered_count = discovered_count + ?, updated_at = ? WHERE id = ?", inserted, now, first.CrawlID)
 			return err
 		}
-		rows, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		inserted = rows == 1
-		if inserted {
-			_, err = tx.ExecContext(ctx, "UPDATE crawl SET discovered_count = discovered_count + 1, updated_at = ? WHERE id = ?", now, discovery.CrawlID)
-		}
-		return err
+		return nil
 	})
+	if err == nil && limitReached {
+		err = ErrURLLimitReached
+	}
 	return inserted, err
 }
 
