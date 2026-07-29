@@ -34,6 +34,8 @@ Profiles control the seed URL, host/subdomain scope, excluded path expressions, 
 
 `seo-auditor-cli` emits JSON on stdout and errors as JSON on stderr. Run it without a command for the command list. Important read workflows include `crawl-status`, `crawl-timeline`, `audit-summary`, `page-list`, `page-get`, `issue-list`, and `issue-explain`. Lifecycle commands are `crawl-pause`, `crawl-resume`, and `crawl-cancel`. `report-export` supports CSV, NDJSON and XLSX managed artifacts. `diagnostic-create` writes a metadata-only support artifact; use `artifact-get` to inspect its managed path.
 
+For bounded list mode, run `seo-auditor-cli crawl --urls 'https://example.com/a,https://example.org/b' --max-urls 10000`. List order is retained, normalized duplicates are removed, and the allowed-host set is derived from the supplied URLs. The local API accepts the equivalent `urls` array. A list is limited to 10,000 seeds and still obeys all target guards, robots rules, crawl limits and per-host politeness.
+
 ## MCP
 
 Configure an MCP client to execute `seo-auditor-mcp` over stdio. The server never opens an MCP network listener. Tools cover health, projects/profiles, crawl control, summaries, pages, issues, comparisons and reports. Treat crawl-start and lifecycle tools as mutations requiring explicit operator intent. Keep protocol stdout reserved for MCP frames; logs belong on stderr.

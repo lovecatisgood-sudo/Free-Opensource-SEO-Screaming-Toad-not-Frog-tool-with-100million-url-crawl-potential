@@ -143,15 +143,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var input struct {
-			URL             string `json:"url"`
-			Name            string `json:"name"`
-			AllowSubdomains bool   `json:"allow_subdomains"`
-			MaximumURLs     int64  `json:"maximum_urls"`
-			MaximumDepth    *int   `json:"maximum_depth"`
-			Concurrency     *int   `json:"concurrency"`
-			PerHost         *int   `json:"per_host"`
+			URL             string   `json:"url"`
+			URLs            []string `json:"urls"`
+			Name            string   `json:"name"`
+			AllowSubdomains bool     `json:"allow_subdomains"`
+			MaximumURLs     int64    `json:"maximum_urls"`
+			MaximumDepth    *int     `json:"maximum_depth"`
+			Concurrency     *int     `json:"concurrency"`
+			PerHost         *int     `json:"per_host"`
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+		r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
 		decoder := json.NewDecoder(r.Body)
 		decoder.DisallowUnknownFields()
 		if err := decodeOne(decoder, &input); err != nil {
@@ -172,7 +173,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			limits.PerHostConcurrency = *input.PerHost
 		}
 		limits.MaximumDuration = 24 * time.Hour
-		result, err := h.backend.StartCrawl(r.Context(), application.CrawlRequest{ProjectName: input.Name, SeedURL: input.URL, AllowSubdomains: input.AllowSubdomains, Limits: limits})
+		if input.URL == "" && len(input.URLs) == 0 {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "url or urls is required")
+			return
+		}
+		result, err := h.backend.StartCrawl(r.Context(), application.CrawlRequest{ProjectName: input.Name, SeedURL: input.URL, SeedURLs: input.URLs, AllowSubdomains: input.AllowSubdomains, Limits: limits})
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
 			return

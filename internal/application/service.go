@@ -78,6 +78,7 @@ func (s *Service) Close() error {
 type CrawlRequest struct {
 	ProjectName                                                              string
 	SeedURL                                                                  string
+	SeedURLs                                                                 []string
 	AllowSubdomains                                                          bool
 	IncludePathRegex, ExcludePathRegex, IncludeQueryRegex, ExcludeQueryRegex []string
 	Limits                                                                   contracts.CrawlLimits
@@ -93,6 +94,7 @@ type preparedCrawl struct {
 	result     CrawlResult
 	config     contracts.CrawlConfiguration
 	seed       fetchpolicy.NormalizedURL
+	seeds      []fetchpolicy.NormalizedURL
 	scope      *fetchpolicy.Scope
 	rawFetcher *fetchpolicy.Fetcher
 	robots     *crawler.RobotsService
@@ -178,16 +180,39 @@ func (s *Service) prepare(ctx context.Context, request CrawlRequest) (preparedCr
 	if err := request.Limits.Validate(); err != nil {
 		return preparedCrawl{}, err
 	}
-	seed, err := fetchpolicy.NormalizeURL(request.SeedURL)
-	if err != nil {
-		return preparedCrawl{}, err
+	rawSeeds := request.SeedURLs
+	if len(rawSeeds) == 0 {
+		rawSeeds = []string{request.SeedURL}
 	}
+	if len(rawSeeds) < 1 || len(rawSeeds) > 10_000 {
+		return preparedCrawl{}, errors.New("list mode requires between 1 and 10000 seed URLs")
+	}
+	seeds := make([]fetchpolicy.NormalizedURL, 0, len(rawSeeds))
+	hosts := make([]string, 0, len(rawSeeds))
+	seenURL, seenHost := make(map[string]struct{}), make(map[string]struct{})
+	for _, raw := range rawSeeds {
+		normalized, err := fetchpolicy.NormalizeURL(raw)
+		if err != nil {
+			return preparedCrawl{}, fmt.Errorf("invalid list seed: %w", err)
+		}
+		if _, exists := seenURL[normalized.RequestKey]; exists {
+			continue
+		}
+		seenURL[normalized.RequestKey] = struct{}{}
+		seeds = append(seeds, normalized)
+		if _, exists := seenHost[normalized.URL.Hostname()]; !exists {
+			seenHost[normalized.URL.Hostname()] = struct{}{}
+			hosts = append(hosts, normalized.URL.Hostname())
+		}
+	}
+	seed := seeds[0]
 	configuration := contracts.CrawlConfiguration{
-		SeedURL: seed.RequestKey, AllowedHosts: []string{seed.URL.Hostname()}, AllowSubdomains: request.AllowSubdomains,
+		SeedURL: seed.RequestKey, AllowedHosts: hosts, AllowSubdomains: request.AllowSubdomains,
 		IncludePathRegex: request.IncludePathRegex, ExcludePathRegex: request.ExcludePathRegex,
 		IncludeQueryRegex: request.IncludeQueryRegex, ExcludeQueryRegex: request.ExcludeQueryRegex,
 		UserAgent: UserAgent, RenderingMode: "raw", Limits: request.Limits,
 	}
+	var err error
 	configuration, err = validateConfiguration(configuration)
 	if err != nil {
 		return preparedCrawl{}, err
@@ -197,6 +222,7 @@ func (s *Service) prepare(ctx context.Context, request CrawlRequest) (preparedCr
 	if err != nil {
 		return preparedCrawl{}, err
 	}
+	prepared.seeds = seeds
 	projectID, err := contracts.NewID("project")
 	if err != nil {
 		return preparedCrawl{}, err
@@ -220,10 +246,19 @@ func (s *Service) persistPrepared(ctx context.Context, prepared preparedCrawl, p
 		prepared.transport.CloseIdleConnections()
 		return preparedCrawl{}, err
 	}
-	if _, err := s.frontier.Enqueue(ctx, database.Discovery{
-		CrawlID: crawlID, ProjectID: projectID, URL: seed, Depth: 0,
-		DiscoveryKind: "seed", MaximumURLs: configuration.Limits.MaximumURLs,
-	}); err != nil {
+	seeds := prepared.seeds
+	if len(seeds) == 0 {
+		seeds = []fetchpolicy.NormalizedURL{seed}
+	}
+	discoveries := make([]database.Discovery, 0, len(seeds))
+	kind := "seed"
+	if len(seeds) > 1 {
+		kind = "list"
+	}
+	for _, item := range seeds {
+		discoveries = append(discoveries, database.Discovery{CrawlID: crawlID, ProjectID: projectID, URL: item, Depth: 0, DiscoveryKind: kind, MaximumURLs: configuration.Limits.MaximumURLs})
+	}
+	if _, err := s.frontier.EnqueueBatch(ctx, discoveries); err != nil {
 		prepared.transport.CloseIdleConnections()
 		return preparedCrawl{}, err
 	}
@@ -277,7 +312,7 @@ func (s *Service) buildPrepared(ctx context.Context, result CrawlResult, configu
 			Fetcher: rawFetcher,
 		}
 	}
-	return preparedCrawl{result: result, config: configuration, seed: seed, scope: scope, rawFetcher: rawFetcher, robots: robots, renderer: renderSupervisor, transport: transport}, nil
+	return preparedCrawl{result: result, config: configuration, seed: seed, seeds: []fetchpolicy.NormalizedURL{seed}, scope: scope, rawFetcher: rawFetcher, robots: robots, renderer: renderSupervisor, transport: transport}, nil
 }
 
 func (s *Service) run(ctx context.Context, prepared preparedCrawl) error {

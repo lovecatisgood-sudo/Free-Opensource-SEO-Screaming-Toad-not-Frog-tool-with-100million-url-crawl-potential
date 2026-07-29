@@ -276,13 +276,18 @@ func getByCrawl(ctx context.Context, client *localclient.Client, command string,
 func runStandaloneCrawl(ctx context.Context, arguments []string) (application.CrawlResult, error) {
 	flags := flag.NewFlagSet("crawl", flag.ContinueOnError)
 	seed := flags.String("url", "", "public HTTP or HTTPS seed URL")
+	seedList := flags.String("urls", "", "comma or newline separated list-mode seed URLs")
 	name := flags.String("name", "Audit", "project name")
 	maximumURLs := flags.Int64("max-urls", 10_000, "maximum URLs")
 	if err := flags.Parse(arguments); err != nil {
 		return application.CrawlResult{}, err
 	}
-	if *seed == "" {
-		return application.CrawlResult{}, errors.New("--url is required")
+	if (*seed == "") == (*seedList == "") {
+		return application.CrawlResult{}, errors.New("provide exactly one of --url or --urls")
+	}
+	var seeds []string
+	if *seedList != "" {
+		seeds = strings.FieldsFunc(*seedList, func(r rune) bool { return r == ',' || r == '\n' || r == '\r' })
 	}
 	paths, err := config.ResolvePaths()
 	if err != nil {
@@ -299,7 +304,7 @@ func runStandaloneCrawl(ctx context.Context, arguments []string) (application.Cr
 	limits := contracts.DefaultCrawlLimits()
 	limits.MaximumURLs = *maximumURLs
 	limits.MaximumDuration = 24 * time.Hour
-	return service.Crawl(ctx, application.CrawlRequest{ProjectName: *name, SeedURL: *seed, Limits: limits})
+	return service.Crawl(ctx, application.CrawlRequest{ProjectName: *name, SeedURL: *seed, SeedURLs: seeds, Limits: limits})
 }
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: seo-auditor-cli <version|crawl|project-create|project-list|profile-create|profile-list|scope-preview|crawl-start|crawl-list|crawl-status|crawl-timeline|crawl-pause|crawl-resume|crawl-cancel|audit-summary|issue-list|issue-explain|page-list|page-get|crawl-compare|report-export|diagnostic-create|artifact-get> [options]")
