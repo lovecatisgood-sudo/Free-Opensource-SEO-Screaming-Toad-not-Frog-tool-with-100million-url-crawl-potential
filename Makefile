@@ -7,7 +7,7 @@ export GOCACHE := $(CURDIR)/.cache/go-build
 export GOMODCACHE := $(CURDIR)/.cache/go-mod
 export GOPATH := $(CURDIR)/.cache/go-path
 
-.PHONY: bootstrap build test test-offline lint fmt clean sandbox sandbox-down sandbox-shell
+.PHONY: bootstrap build test test-offline lint fmt release clean sandbox sandbox-down sandbox-shell
 
 bootstrap:
 	@mkdir -p .data .cache .artifacts .coverage bin
@@ -26,6 +26,9 @@ lint:
 
 fmt:
 	@test -z "$$($(GO) fmt ./...)"
+
+release:
+	./scripts/build-release.sh
 
 clean:
 	$(GO) clean ./...

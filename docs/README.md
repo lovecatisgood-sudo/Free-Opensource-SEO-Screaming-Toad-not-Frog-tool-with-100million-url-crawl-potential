@@ -13,6 +13,7 @@ This directory is the approved planning source of truth for the secure, local-fi
 7. [Operations guide](./OPERATIONS.md) — installation, CLI/MCP use, updates, storage, backup and troubleshooting.
 8. [Security model](./SECURITY_MODEL.md) — trust boundaries, controls and residual risks.
 9. [Audit rule catalog](./RULE_CATALOG.md) — versioned rule coverage and limitations.
+10. [Release and reproducibility](./RELEASE.md) — cross-platform artifacts, SBOM, checksums and signing limits.
 
 ## Document precedence
 
