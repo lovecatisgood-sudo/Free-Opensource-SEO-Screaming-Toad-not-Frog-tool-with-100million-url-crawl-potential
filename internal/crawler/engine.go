@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -45,6 +46,7 @@ type RunRequest struct {
 	WorkerID              string
 	RenderingMode         string
 	NearDuplicateDistance int
+	SegmentSize           int64
 }
 
 type workResult struct {
@@ -74,6 +76,12 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 	}
 	if request.NearDuplicateDistance < 0 || request.NearDuplicateDistance > 3 {
 		return errors.New("near-duplicate distance must be between 0 and 3")
+	}
+	if request.SegmentSize == 0 {
+		request.SegmentSize = 100_000
+	}
+	if request.SegmentSize < 10_000 || request.SegmentSize > 100_000 {
+		return errors.New("segment size must be between 10000 and 100000 URLs")
 	}
 	leaseTime := e.LeaseTime
 	if leaseTime <= 0 {
@@ -113,6 +121,16 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 			_ = e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlRunning}, contracts.CrawlLimited, "disk_limit")
 			return fmt.Errorf("crawl disk limit reached")
 		}
+		if err := e.Frontier.CheckpointSegments(runCtx, request.CrawlID, request.SegmentSize, storage); err != nil {
+			return err
+		}
+		if progress.Analysed >= 1_000 {
+			projected := projectedStorageBytes(storage, progress.Analysed, request.Limits.MaximumURLs)
+			if projected > request.Limits.MaximumDiskBytes {
+				_ = e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlRunning}, contracts.CrawlLimited, "projected_disk_limit")
+				return fmt.Errorf("projected crawl storage exceeds disk limit")
+			}
+		}
 		switch progress.Status {
 		case contracts.CrawlPausing:
 			return e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlPausing}, contracts.CrawlPaused, "")
@@ -126,6 +144,13 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 		if len(leases) == 0 {
 			if progress.Queued == 0 {
 				if err := e.Frontier.FinalizeAudit(runCtx, request.CrawlID, rules.DefaultThresholds().DeepPageDepth, request.NearDuplicateDistance); err != nil {
+					return err
+				}
+				storage, err := e.Frontier.StorageBytes()
+				if err != nil {
+					return err
+				}
+				if err := e.Frontier.FinalizeSegments(runCtx, request.CrawlID, request.SegmentSize, storage); err != nil {
 					return err
 				}
 				return e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlRunning}, contracts.CrawlCompleted, "")
@@ -368,4 +393,30 @@ func (e *Engine) failOrRetry(ctx context.Context, crawlID contracts.ID, lease da
 func isHTML(contentType string) bool {
 	contentType = strings.ToLower(contentType)
 	return strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/xhtml+xml")
+}
+
+func projectedStorageBytes(storage, analysed, total int64) int64 {
+	if storage <= 0 || analysed <= 0 || total <= 0 {
+		return 0
+	}
+	quotient, remainder := storage/analysed, storage%analysed
+	if quotient > math.MaxInt64/total {
+		return math.MaxInt64
+	}
+	projected := quotient * total
+	if remainder == 0 {
+		return projected
+	}
+	if remainder > math.MaxInt64/total {
+		return math.MaxInt64
+	}
+	product := remainder * total
+	if product > math.MaxInt64-(analysed-1) {
+		return math.MaxInt64
+	}
+	extra := (product + analysed - 1) / analysed
+	if projected > math.MaxInt64-extra {
+		return math.MaxInt64
+	}
+	return projected + extra
 }

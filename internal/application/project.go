@@ -61,6 +61,9 @@ func validateConfiguration(configuration contracts.CrawlConfiguration) (contract
 	if distance := configuration.EffectiveNearDuplicateDistance(); distance < 0 || distance > 3 {
 		return configuration, errors.New("near-duplicate distance must be between 0 and 3")
 	}
+	if size := configuration.EffectiveSegmentSize(); size < 10_000 || size > 100_000 {
+		return configuration, errors.New("segment size must be between 10000 and 100000 URLs")
+	}
 	if err := configuration.Limits.Validate(); err != nil {
 		return configuration, err
 	}

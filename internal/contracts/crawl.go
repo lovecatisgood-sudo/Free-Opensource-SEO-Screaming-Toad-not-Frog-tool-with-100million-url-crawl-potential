@@ -54,6 +54,7 @@ type CrawlConfiguration struct {
 	// NearDuplicateDistance is the maximum SimHash Hamming distance (0-3).
 	// Nil selects the default of 3; zero disables near-duplicate findings.
 	NearDuplicateDistance *int        `json:"near_duplicate_distance,omitempty"`
+	SegmentSize           int64       `json:"segment_size,omitempty"`
 	Limits                CrawlLimits `json:"limits"`
 }
 
@@ -62,6 +63,13 @@ func (c CrawlConfiguration) EffectiveNearDuplicateDistance() int {
 		return 3
 	}
 	return *c.NearDuplicateDistance
+}
+
+func (c CrawlConfiguration) EffectiveSegmentSize() int64 {
+	if c.SegmentSize == 0 {
+		return 100_000
+	}
+	return c.SegmentSize
 }
 
 func DefaultCrawlLimits() CrawlLimits {

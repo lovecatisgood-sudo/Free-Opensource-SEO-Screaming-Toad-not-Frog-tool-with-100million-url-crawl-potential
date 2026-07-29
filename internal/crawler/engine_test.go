@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -143,5 +144,15 @@ func TestEngineCrawlsBoundedGraphOnce(t *testing.T) {
 		if calls != 1 {
 			t.Errorf("%s fetched %d times", target, calls)
 		}
+	}
+}
+
+func TestProjectedStorageBytesRoundsUpAndSaturates(t *testing.T) {
+	t.Parallel()
+	if got := projectedStorageBytes(1_001, 1_000, 100_000); got != 100_100 {
+		t.Fatalf("projection=%d", got)
+	}
+	if got := projectedStorageBytes(math.MaxInt64, 1, 100_000_000); got != math.MaxInt64 {
+		t.Fatalf("saturated projection=%d", got)
 	}
 }

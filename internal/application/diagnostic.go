@@ -27,6 +27,7 @@ type diagnosticBundle struct {
 	AllowedHostCount  int                         `json:"allowed_host_count"`
 	DatabaseIntegrity string                      `json:"database_integrity"`
 	Events            []database.CrawlEventRecord `json:"events"`
+	Segments          []database.CampaignSegment  `json:"segments"`
 	ContentExcluded   bool                        `json:"crawled_content_excluded"`
 }
 
@@ -57,6 +58,10 @@ func (s *Service) Diagnostic(ctx context.Context, crawlID contracts.ID) (Artifac
 		}
 		cursor = page.NextCursor
 	}
+	segments, err := s.frontier.ListSegments(ctx, crawlID)
+	if err != nil {
+		return Artifact{}, err
+	}
 	integrity := "ok"
 	if err := s.db.Verify(ctx); err != nil {
 		integrity = "failed"
@@ -65,7 +70,7 @@ func (s *Service) Diagnostic(ctx context.Context, crawlID contracts.ID) (Artifac
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), Version: version.Version, Commit: version.Commit,
 		CrawlID: crawlID, Summary: summary, RenderingMode: stored.Configuration.RenderingMode,
 		Limits: stored.Configuration.Limits, AllowedHostCount: len(stored.Configuration.AllowedHosts),
-		DatabaseIntegrity: integrity, Events: events, ContentExcluded: true,
+		DatabaseIntegrity: integrity, Events: events, Segments: segments, ContentExcluded: true,
 	}
 	return s.writeManagedArtifact(ctx, crawlID, "diagnostic-json", "diagnostic.json", 7*24*time.Hour, func(writer io.Writer) error {
 		encoder := json.NewEncoder(writer)
