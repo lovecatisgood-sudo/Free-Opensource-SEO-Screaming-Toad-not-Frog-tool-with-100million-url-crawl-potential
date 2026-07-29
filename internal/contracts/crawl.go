@@ -39,6 +39,21 @@ type CrawlLimits struct {
 	MinimumHostDelay   time.Duration `json:"minimum_host_delay"`
 }
 
+// CrawlConfiguration is the non-secret, reusable input required to reconstruct
+// a crawl safely after pause or process restart.
+type CrawlConfiguration struct {
+	SeedURL           string      `json:"seed_url"`
+	AllowedHosts      []string    `json:"allowed_hosts"`
+	AllowSubdomains   bool        `json:"allow_subdomains"`
+	IncludePathRegex  []string    `json:"include_path_regex,omitempty"`
+	ExcludePathRegex  []string    `json:"exclude_path_regex,omitempty"`
+	IncludeQueryRegex []string    `json:"include_query_regex,omitempty"`
+	ExcludeQueryRegex []string    `json:"exclude_query_regex,omitempty"`
+	UserAgent         string      `json:"user_agent"`
+	RenderingMode     string      `json:"rendering_mode"`
+	Limits            CrawlLimits `json:"limits"`
+}
+
 func DefaultCrawlLimits() CrawlLimits {
 	return CrawlLimits{
 		MaximumURLs: 100_000, MaximumDepth: 50, MaximumDuration: 24 * time.Hour,

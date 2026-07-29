@@ -21,6 +21,7 @@ input[type="url"], input[type="text"], input[type="number"], label:not(.check) i
 .check { display: flex; min-height: 48px; align-items: center; gap: 10px; }.check input { width: 18px; height: 18px; accent-color: #69dab0; }
 button { min-height: 44px; padding: 0 18px; border: 0; border-radius: 10px; font-weight: 800; cursor: pointer; }.primary { min-height: 50px; color: #062018; background: #69dab0; }.primary:hover { background: #88e9c5; }.primary:disabled { cursor: not-allowed; opacity: .55; }
 .secondary { border: 1px solid #476172; color: #dbe6ec; background: transparent; }.danger { border-color: #8e4a54; color: #ffb4be; }
+.actions { display: flex; flex-wrap: wrap; gap: .7rem; }
 .alert { margin-top: 20px; padding: 14px 16px; border: 1px solid #9b4652; border-radius: 10px; color: #ffc1c8; background: #3a141a; }
 .progress-panel { display: grid; grid-template-columns: .65fr 1.35fr; gap: 36px; }.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #8196a5; font-size: .76rem; overflow-wrap: anywhere; }
 .progress-content { display: grid; gap: 18px; }progress { width: 100%; height: 10px; border: 0; border-radius: 99px; overflow: hidden; }progress::-webkit-progress-bar { background: #172a36; }progress::-webkit-progress-value { background: #69dab0; }progress::-moz-progress-bar { background: #69dab0; }

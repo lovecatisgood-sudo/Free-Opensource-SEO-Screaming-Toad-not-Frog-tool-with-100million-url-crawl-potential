@@ -39,11 +39,11 @@ func (f *Frontier) CreateProject(ctx context.Context, id contracts.ID, name stri
 	})
 }
 
-func (f *Frontier) CreateCrawl(ctx context.Context, crawlID, projectID contracts.ID, seed fetchpolicy.NormalizedURL, limits contracts.CrawlLimits) error {
-	if err := limits.Validate(); err != nil {
+func (f *Frontier) CreateCrawl(ctx context.Context, crawlID, projectID contracts.ID, seed fetchpolicy.NormalizedURL, configuration contracts.CrawlConfiguration) error {
+	if err := configuration.Limits.Validate(); err != nil {
 		return err
 	}
-	config, err := json.Marshal(limits)
+	config, err := json.Marshal(configuration)
 	if err != nil {
 		return err
 	}
@@ -51,6 +51,54 @@ func (f *Frontier) CreateCrawl(ctx context.Context, crawlID, projectID contracts
 	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO crawl(id, project_id, seed_url, config_json, status, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'pending', ?, ?)`, crawlID, projectID, seed.RequestKey, string(config), now, now)
+		return err
+	})
+}
+
+type StoredCrawl struct {
+	CrawlID       contracts.ID
+	ProjectID     contracts.ID
+	Status        contracts.CrawlStatus
+	Configuration contracts.CrawlConfiguration
+}
+
+func (f *Frontier) LoadCrawl(ctx context.Context, crawlID contracts.ID) (StoredCrawl, error) {
+	var result StoredCrawl
+	var raw, seed string
+	err := f.db.QueryRowContext(ctx, `SELECT id,project_id,status,seed_url,config_json FROM crawl WHERE id=?`, crawlID).Scan(&result.CrawlID, &result.ProjectID, &result.Status, &seed, &raw)
+	if err != nil {
+		return result, err
+	}
+	if err := json.Unmarshal([]byte(raw), &result.Configuration); err != nil {
+		return result, fmt.Errorf("decode crawl configuration: %w", err)
+	}
+	// Compatibility with databases created before complete configuration was stored.
+	if result.Configuration.SeedURL == "" {
+		var limits contracts.CrawlLimits
+		if err := json.Unmarshal([]byte(raw), &limits); err != nil {
+			return result, fmt.Errorf("decode legacy crawl limits: %w", err)
+		}
+		normalized, err := fetchpolicy.NormalizeURL(seed)
+		if err != nil {
+			return result, err
+		}
+		result.Configuration = contracts.CrawlConfiguration{SeedURL: normalized.RequestKey, AllowedHosts: []string{normalized.URL.Hostname()}, UserAgent: "SEOAuditor/0.1", RenderingMode: "raw", Limits: limits}
+	}
+	return result, nil
+}
+
+// RecoverInterruptedCrawls releases leases owned by a dead process and leaves
+// work paused for an explicit operator resume.
+func (f *Frontier) RecoverInterruptedCrawls(ctx context.Context) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE crawl_url SET state='queued',lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE crawl_id IN (SELECT id FROM crawl WHERE status IN ('running','pausing')) AND state='leased'`, now); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE crawl SET status='paused',terminal_reason='recovered_after_restart',updated_at=? WHERE status IN ('running','pausing')`, now); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE crawl SET status='cancelled',terminal_reason='recovered_cancel',finished_at=?,updated_at=? WHERE status='cancelling'`, now, now)
 		return err
 	})
 }

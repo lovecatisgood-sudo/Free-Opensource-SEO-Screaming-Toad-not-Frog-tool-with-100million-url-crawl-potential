@@ -23,6 +23,8 @@ type Service struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	runs     sync.WaitGroup
+	mu       sync.Mutex
+	active   map[contracts.ID]bool
 }
 
 func Open(ctx context.Context, dataDirectory string) (*Service, error) {
@@ -34,7 +36,14 @@ func Open(ctx context.Context, dataDirectory string) (*Service, error) {
 		return nil, err
 	}
 	serviceCtx, cancel := context.WithCancel(ctx)
-	return &Service{db: db, frontier: database.NewFrontier(db, 1024), ctx: serviceCtx, cancel: cancel}, nil
+	service := &Service{db: db, frontier: database.NewFrontier(db, 1024), ctx: serviceCtx, cancel: cancel, active: make(map[contracts.ID]bool)}
+	if err := service.frontier.RecoverInterruptedCrawls(ctx); err != nil {
+		service.frontier.Close()
+		_ = db.Close()
+		cancel()
+		return nil, err
+	}
+	return service, nil
 }
 
 func (s *Service) Close() error {
@@ -45,10 +54,11 @@ func (s *Service) Close() error {
 }
 
 type CrawlRequest struct {
-	ProjectName     string
-	SeedURL         string
-	AllowSubdomains bool
-	Limits          contracts.CrawlLimits
+	ProjectName                                                              string
+	SeedURL                                                                  string
+	AllowSubdomains                                                          bool
+	IncludePathRegex, ExcludePathRegex, IncludeQueryRegex, ExcludeQueryRegex []string
+	Limits                                                                   contracts.CrawlLimits
 }
 
 type CrawlResult struct {
@@ -59,7 +69,7 @@ type CrawlResult struct {
 
 type preparedCrawl struct {
 	result     CrawlResult
-	request    CrawlRequest
+	config     contracts.CrawlConfiguration
 	seed       fetchpolicy.NormalizedURL
 	scope      *fetchpolicy.Scope
 	rawFetcher *fetchpolicy.Fetcher
@@ -89,14 +99,34 @@ func (s *Service) StartCrawl(ctx context.Context, request CrawlRequest) (CrawlRe
 	if err != nil {
 		return CrawlResult{}, err
 	}
+	if err := s.launch(prepared); err != nil {
+		return CrawlResult{}, err
+	}
+	return prepared.result, nil
+}
+
+func (s *Service) launch(prepared preparedCrawl) error {
+	s.mu.Lock()
+	if s.active[prepared.result.CrawlID] {
+		s.mu.Unlock()
+		prepared.transport.CloseIdleConnections()
+		return errors.New("crawl is already active")
+	}
+	s.active[prepared.result.CrawlID] = true
+	s.mu.Unlock()
 	s.runs.Add(1)
 	go func() {
 		defer s.runs.Done()
+		defer func() {
+			s.mu.Lock()
+			delete(s.active, prepared.result.CrawlID)
+			s.mu.Unlock()
+		}()
 		if runErr := s.run(s.ctx, prepared); runErr != nil {
 			_ = s.frontier.SetStatus(context.Background(), prepared.result.CrawlID, []contracts.CrawlStatus{contracts.CrawlPending, contracts.CrawlRunning}, contracts.CrawlFailed, "background_error")
 		}
 	}()
-	return prepared.result, nil
+	return nil
 }
 
 func (s *Service) prepare(ctx context.Context, request CrawlRequest) (preparedCrawl, error) {
@@ -110,26 +140,14 @@ func (s *Service) prepare(ctx context.Context, request CrawlRequest) (preparedCr
 	if err != nil {
 		return preparedCrawl{}, err
 	}
-	scope, err := fetchpolicy.CompileScope(fetchpolicy.ScopeConfig{
-		AllowedHosts: []string{seed.URL.Hostname()}, AllowSubdomains: request.AllowSubdomains,
-	})
-	if err != nil {
-		return preparedCrawl{}, err
+	configuration := contracts.CrawlConfiguration{
+		SeedURL: seed.RequestKey, AllowedHosts: []string{seed.URL.Hostname()}, AllowSubdomains: request.AllowSubdomains,
+		IncludePathRegex: request.IncludePathRegex, ExcludePathRegex: request.ExcludePathRegex,
+		IncludeQueryRegex: request.IncludeQueryRegex, ExcludeQueryRegex: request.ExcludeQueryRegex,
+		UserAgent: UserAgent, RenderingMode: "raw", Limits: request.Limits,
 	}
-	resolver := fetchpolicy.SystemResolver{}
-	guard := &fetchpolicy.Guard{Resolver: resolver, Scope: scope}
-	if _, err := guard.Validate(ctx, seed.RequestKey); err != nil {
-		return preparedCrawl{}, fmt.Errorf("seed rejected: %w", err)
-	}
-	transport := fetchpolicy.NewHTTPTransport(resolver)
-	fetchLimits := fetchpolicy.DefaultFetchLimits()
-	fetchLimits.MaximumDecodedBytes = request.Limits.MaximumBodyBytes
-	fetchLimits.MaximumCompressedBytes = min(fetchLimits.MaximumCompressedBytes, request.Limits.MaximumBodyBytes)
-	rawFetcher, err := fetchpolicy.NewFetcher(guard, transport, fetchLimits, UserAgent)
-	if err != nil {
-		return preparedCrawl{}, err
-	}
-	robots, err := crawler.NewRobotsService(rawFetcher, "SEOAuditor", 12*time.Hour)
+	result := CrawlResult{}
+	prepared, err := s.buildPrepared(ctx, result, configuration)
 	if err != nil {
 		return preparedCrawl{}, err
 	}
@@ -142,26 +160,66 @@ func (s *Service) prepare(ctx context.Context, request CrawlRequest) (preparedCr
 		return preparedCrawl{}, err
 	}
 	if err := s.frontier.CreateProject(ctx, projectID, request.ProjectName); err != nil {
+		prepared.transport.CloseIdleConnections()
 		return preparedCrawl{}, err
 	}
-	if err := s.frontier.CreateCrawl(ctx, crawlID, projectID, seed, request.Limits); err != nil {
+	if err := s.frontier.CreateCrawl(ctx, crawlID, projectID, seed, configuration); err != nil {
+		prepared.transport.CloseIdleConnections()
 		return preparedCrawl{}, err
 	}
 	if _, err := s.frontier.Enqueue(ctx, database.Discovery{
 		CrawlID: crawlID, ProjectID: projectID, URL: seed, Depth: 0,
 		DiscoveryKind: "seed", MaximumURLs: request.Limits.MaximumURLs,
 	}); err != nil {
+		prepared.transport.CloseIdleConnections()
 		return preparedCrawl{}, err
 	}
 	progress, err := s.frontier.Progress(ctx, crawlID)
 	if err != nil {
+		prepared.transport.CloseIdleConnections()
 		return preparedCrawl{}, err
 	}
-	return preparedCrawl{result: CrawlResult{ProjectID: projectID, CrawlID: crawlID, Progress: progress}, request: request, seed: seed, scope: scope, rawFetcher: rawFetcher, robots: robots, transport: transport}, nil
+	prepared.result = CrawlResult{ProjectID: projectID, CrawlID: crawlID, Progress: progress}
+	return prepared, nil
+}
+
+func (s *Service) buildPrepared(ctx context.Context, result CrawlResult, configuration contracts.CrawlConfiguration) (preparedCrawl, error) {
+	if err := configuration.Limits.Validate(); err != nil {
+		return preparedCrawl{}, err
+	}
+	seed, err := fetchpolicy.NormalizeURL(configuration.SeedURL)
+	if err != nil {
+		return preparedCrawl{}, err
+	}
+	scope, err := fetchpolicy.CompileScope(fetchpolicy.ScopeConfig{AllowedHosts: configuration.AllowedHosts, AllowSubdomains: configuration.AllowSubdomains, IncludePathRegex: configuration.IncludePathRegex, ExcludePathRegex: configuration.ExcludePathRegex, IncludeQueryRegex: configuration.IncludeQueryRegex, ExcludeQueryRegex: configuration.ExcludeQueryRegex})
+	if err != nil {
+		return preparedCrawl{}, err
+	}
+	resolver := fetchpolicy.SystemResolver{}
+	guard := &fetchpolicy.Guard{Resolver: resolver, Scope: scope}
+	if _, err := guard.Validate(ctx, seed.RequestKey); err != nil {
+		return preparedCrawl{}, fmt.Errorf("seed rejected: %w", err)
+	}
+	transport := fetchpolicy.NewHTTPTransport(resolver)
+	fetchLimits := fetchpolicy.DefaultFetchLimits()
+	fetchLimits.MaximumDecodedBytes = configuration.Limits.MaximumBodyBytes
+	fetchLimits.MaximumCompressedBytes = min(fetchLimits.MaximumCompressedBytes, configuration.Limits.MaximumBodyBytes)
+	rawFetcher, err := fetchpolicy.NewFetcher(guard, transport, fetchLimits, configuration.UserAgent)
+	if err != nil {
+		return preparedCrawl{}, err
+	}
+	robots, err := crawler.NewRobotsService(rawFetcher, "SEOAuditor", 12*time.Hour)
+	if err != nil {
+		return preparedCrawl{}, err
+	}
+	return preparedCrawl{result: result, config: configuration, seed: seed, scope: scope, rawFetcher: rawFetcher, robots: robots, transport: transport}, nil
 }
 
 func (s *Service) run(ctx context.Context, prepared preparedCrawl) error {
 	defer prepared.transport.CloseIdleConnections()
+	if err := s.frontier.SetStatus(ctx, prepared.result.CrawlID, []contracts.CrawlStatus{contracts.CrawlPending, contracts.CrawlPaused, contracts.CrawlRunning}, contracts.CrawlRunning, ""); err != nil {
+		return err
+	}
 	robotsSitemaps, err := prepared.robots.Sitemaps(ctx, prepared.seed.RequestKey)
 	if err != nil {
 		return err
@@ -169,7 +227,7 @@ func (s *Service) run(ctx context.Context, prepared preparedCrawl) error {
 	commonSitemap := prepared.seed.URL.Scheme + "://" + prepared.seed.URL.Host + "/sitemap.xml"
 	roots := append(robotsSitemaps, commonSitemap)
 	discoveryLimits := crawler.DefaultSitemapDiscoveryLimits()
-	discoveryLimits.MaximumURLs = int(min(prepared.request.Limits.MaximumURLs, int64(discoveryLimits.MaximumURLs)))
+	discoveryLimits.MaximumURLs = int(min(prepared.config.Limits.MaximumURLs, int64(discoveryLimits.MaximumURLs)))
 	sitemapURLs, sitemapEvidence, err := crawler.DiscoverSitemaps(ctx, prepared.rawFetcher, prepared.scope, roots, discoveryLimits)
 	if err != nil && len(sitemapEvidence) == 0 {
 		return err
@@ -192,9 +250,19 @@ func (s *Service) run(ctx context.Context, prepared preparedCrawl) error {
 		if normalizeErr != nil {
 			continue
 		}
-		if _, enqueueErr := s.frontier.Enqueue(ctx, database.Discovery{CrawlID: prepared.result.CrawlID, ProjectID: prepared.result.ProjectID, URL: target, Depth: 0, DiscoveryKind: "sitemap", MaximumURLs: prepared.request.Limits.MaximumURLs}); enqueueErr != nil && !errors.Is(enqueueErr, database.ErrURLLimitReached) {
+		if _, enqueueErr := s.frontier.Enqueue(ctx, database.Discovery{CrawlID: prepared.result.CrawlID, ProjectID: prepared.result.ProjectID, URL: target, Depth: 0, DiscoveryKind: "sitemap", MaximumURLs: prepared.config.Limits.MaximumURLs}); enqueueErr != nil && !errors.Is(enqueueErr, database.ErrURLLimitReached) {
 			return enqueueErr
 		}
+	}
+	progress, err := s.frontier.Progress(ctx, prepared.result.CrawlID)
+	if err != nil {
+		return err
+	}
+	if progress.Status == contracts.CrawlCancelling {
+		return s.frontier.SetStatus(ctx, prepared.result.CrawlID, []contracts.CrawlStatus{contracts.CrawlCancelling}, contracts.CrawlCancelled, "user_cancelled")
+	}
+	if progress.Status == contracts.CrawlPausing {
+		return s.frontier.SetStatus(ctx, prepared.result.CrawlID, []contracts.CrawlStatus{contracts.CrawlPausing}, contracts.CrawlPaused, "")
 	}
 	engine := &crawler.Engine{
 		Frontier: s.frontier,
@@ -202,7 +270,7 @@ func (s *Service) run(ctx context.Context, prepared preparedCrawl) error {
 		Scope:    prepared.scope, LeaseTime: 2 * time.Minute, MaxLinksPerPage: 10_000,
 	}
 	return engine.Run(ctx, crawler.RunRequest{
-		CrawlID: prepared.result.CrawlID, ProjectID: prepared.result.ProjectID, Limits: prepared.request.Limits, WorkerID: "local",
+		CrawlID: prepared.result.CrawlID, ProjectID: prepared.result.ProjectID, Limits: prepared.config.Limits, WorkerID: "local",
 	})
 }
 
@@ -221,4 +289,23 @@ func (s *Service) ListIssues(ctx context.Context, crawlID contracts.ID, page con
 }
 func (s *Service) Cancel(ctx context.Context, crawlID contracts.ID) error {
 	return s.frontier.RequestCancel(ctx, crawlID)
+}
+
+func (s *Service) Pause(ctx context.Context, crawlID contracts.ID) error {
+	return s.frontier.RequestPause(ctx, crawlID)
+}
+
+func (s *Service) Resume(ctx context.Context, crawlID contracts.ID) error {
+	stored, err := s.frontier.LoadCrawl(ctx, crawlID)
+	if err != nil {
+		return err
+	}
+	if stored.Status != contracts.CrawlPaused {
+		return fmt.Errorf("crawl must be paused to resume")
+	}
+	prepared, err := s.buildPrepared(ctx, CrawlResult{ProjectID: stored.ProjectID, CrawlID: stored.CrawlID}, stored.Configuration)
+	if err != nil {
+		return err
+	}
+	return s.launch(prepared)
 }

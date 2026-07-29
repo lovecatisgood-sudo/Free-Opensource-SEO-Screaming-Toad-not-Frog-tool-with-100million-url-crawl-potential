@@ -29,6 +29,8 @@ type Backend interface {
 	ListPages(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.PageRecord], error)
 	ListIssues(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.IssueRecord], error)
 	Cancel(context.Context, contracts.ID) error
+	Pause(context.Context, contracts.ID) error
+	Resume(context.Context, contracts.ID) error
 }
 
 type Handler struct {
@@ -123,8 +125,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, "forbidden", "origin or CSRF validation failed")
 			return
 		}
-		if action == "cancel" {
-			if err := h.backend.Cancel(r.Context(), crawlID); err != nil {
+		var mutation func(context.Context, contracts.ID) error
+		switch action {
+		case "cancel":
+			mutation = h.backend.Cancel
+		case "pause":
+			mutation = h.backend.Pause
+		case "resume":
+			mutation = h.backend.Resume
+		}
+		if mutation != nil {
+			if err := mutation(r.Context(), crawlID); err != nil {
 				writeError(w, http.StatusConflict, "conflict", err.Error())
 				return
 			}

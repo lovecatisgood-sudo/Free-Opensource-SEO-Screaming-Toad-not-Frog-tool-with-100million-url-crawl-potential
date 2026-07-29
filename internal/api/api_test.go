@@ -30,6 +30,8 @@ func (*fakeBackend) ListIssues(context.Context, contracts.ID, contracts.PageRequ
 	return contracts.Page[database.IssueRecord]{Items: []database.IssueRecord{}}, nil
 }
 func (b *fakeBackend) Cancel(context.Context, contracts.ID) error { b.cancelled = true; return nil }
+func (*fakeBackend) Pause(context.Context, contracts.ID) error    { return nil }
+func (*fakeBackend) Resume(context.Context, contracts.ID) error   { return nil }
 
 func TestSessionAndMutationSecurity(t *testing.T) {
 	t.Parallel()

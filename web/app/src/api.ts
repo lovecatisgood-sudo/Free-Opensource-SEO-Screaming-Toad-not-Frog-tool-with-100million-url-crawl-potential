@@ -21,4 +21,5 @@ export function auditSummary(id: string): Promise<Summary> { return request(`/ap
 export function pages(id: string): Promise<Page<PageRecord>> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/pages?limit=100`); }
 export function issues(id: string): Promise<Page<IssueRecord>> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/issues?limit=100`); }
 export function cancelCrawl(id: string): Promise<void> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/cancel`, { method: "POST" }); }
-
+export function pauseCrawl(id: string): Promise<void> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/pause`, { method: "POST" }); }
+export function resumeCrawl(id: string): Promise<void> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/resume`, { method: "POST" }); }

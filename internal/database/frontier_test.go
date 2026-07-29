@@ -26,7 +26,8 @@ func testFrontier(t *testing.T) (*Frontier, contracts.ID, contracts.ID) {
 		t.Fatal(err)
 	}
 	seed, _ := fetchpolicy.NormalizeURL("https://example.com/")
-	if err := frontier.CreateCrawl(context.Background(), crawlID, projectID, seed, contracts.DefaultCrawlLimits()); err != nil {
+	configuration := contracts.CrawlConfiguration{SeedURL: seed.RequestKey, AllowedHosts: []string{seed.URL.Hostname()}, UserAgent: "test", RenderingMode: "raw", Limits: contracts.DefaultCrawlLimits()}
+	if err := frontier.CreateCrawl(context.Background(), crawlID, projectID, seed, configuration); err != nil {
 		t.Fatal(err)
 	}
 	return frontier, projectID, crawlID
@@ -105,5 +106,35 @@ func TestFrontierControlTransitions(t *testing.T) {
 	progress, err := frontier.Progress(ctx, crawlID)
 	if err != nil || progress.Status != contracts.CrawlCancelled {
 		t.Fatalf("progress = %+v, err = %v", progress, err)
+	}
+}
+
+func TestInterruptedCrawlRecoversPausedWithPersistedConfiguration(t *testing.T) {
+	t.Parallel()
+	frontier, projectID, crawlID := testFrontier(t)
+	ctx := context.Background()
+	target, _ := fetchpolicy.NormalizeURL("https://example.com/recover")
+	if _, err := frontier.Enqueue(ctx, Discovery{CrawlID: crawlID, ProjectID: projectID, URL: target, DiscoveryKind: "link", MaximumURLs: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if err := frontier.SetStatus(ctx, crawlID, []contracts.CrawlStatus{contracts.CrawlPending}, contracts.CrawlRunning, ""); err != nil {
+		t.Fatal(err)
+	}
+	if leases, err := frontier.Lease(ctx, crawlID, "dead-worker", 1, time.Hour); err != nil || len(leases) != 1 {
+		t.Fatalf("lease=%+v err=%v", leases, err)
+	}
+	if err := frontier.RecoverInterruptedCrawls(ctx); err != nil {
+		t.Fatal(err)
+	}
+	progress, err := frontier.Progress(ctx, crawlID)
+	if err != nil || progress.Status != contracts.CrawlPaused || progress.Queued != 1 || progress.TerminalReason != "recovered_after_restart" {
+		t.Fatalf("progress=%+v err=%v", progress, err)
+	}
+	stored, err := frontier.LoadCrawl(ctx, crawlID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Configuration.SeedURL != "https://example.com/" || stored.Configuration.Limits.MaximumURLs != contracts.DefaultCrawlLimits().MaximumURLs {
+		t.Fatalf("configuration=%+v", stored.Configuration)
 	}
 }
