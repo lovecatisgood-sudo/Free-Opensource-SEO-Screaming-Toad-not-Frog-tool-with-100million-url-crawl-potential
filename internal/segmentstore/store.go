@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 var identityPattern = regexp.MustCompile(`^[a-z0-9_]{1,160}$`)
@@ -108,7 +109,7 @@ func (s *Store) Commit(ctx context.Context, crawlID string, sequence, maximumByt
 
 func (s *Store) Verify(objectKey, expected string) error {
 	clean := filepath.Clean(filepath.FromSlash(objectKey))
-	if clean != filepath.FromSlash(objectKey) || filepath.IsAbs(clean) || len(clean) < len("segments/x") {
+	if clean != filepath.FromSlash(objectKey) || filepath.IsAbs(clean) || !strings.HasPrefix(filepath.ToSlash(clean), "segments/") {
 		return errors.New("object key is invalid")
 	}
 	path := filepath.Join(s.root, clean)

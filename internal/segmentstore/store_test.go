@@ -43,4 +43,7 @@ func TestSegmentStoreRejectsTraversalAndOversize(t *testing.T) {
 	if err := store.Verify("../escape", strings.Repeat("0", 64)); err == nil {
 		t.Fatal("traversal object key accepted")
 	}
+	if err := store.Verify("unmanaged/file", strings.Repeat("0", 64)); err == nil {
+		t.Fatal("unmanaged object key accepted")
+	}
 }
