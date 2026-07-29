@@ -13,6 +13,7 @@ import (
 	"github.com/seo-auditor/seo-auditor/internal/database"
 	"github.com/seo-auditor/seo-auditor/internal/extractor"
 	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
+	"github.com/seo-auditor/seo-auditor/internal/renderer"
 	"github.com/seo-auditor/seo-auditor/internal/rules"
 )
 
@@ -24,19 +25,25 @@ type ScopeEvaluator interface {
 	Evaluate(fetchpolicy.NormalizedURL) error
 }
 
+type Renderer interface {
+	Render(context.Context, renderer.Request) (renderer.Result, error)
+}
+
 type Engine struct {
 	Frontier        *database.Frontier
 	Fetcher         Fetcher
 	Scope           ScopeEvaluator
+	Renderer        Renderer
 	LeaseTime       time.Duration
 	MaxLinksPerPage int
 }
 
 type RunRequest struct {
-	CrawlID   contracts.ID
-	ProjectID contracts.ID
-	Limits    contracts.CrawlLimits
-	WorkerID  string
+	CrawlID       contracts.ID
+	ProjectID     contracts.ID
+	Limits        contracts.CrawlLimits
+	WorkerID      string
+	RenderingMode string
 }
 
 type workResult struct {
@@ -54,6 +61,15 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 	}
 	if request.WorkerID == "" {
 		return errors.New("worker ID is required")
+	}
+	if request.RenderingMode == "" {
+		request.RenderingMode = "raw"
+	}
+	if request.RenderingMode != "raw" && request.RenderingMode != "rendered" {
+		return errors.New("rendering mode must be raw or rendered")
+	}
+	if request.RenderingMode == "rendered" && e.Renderer == nil {
+		return errors.New("rendered mode requires a renderer")
 	}
 	leaseTime := e.LeaseTime
 	if leaseTime <= 0 {
@@ -232,11 +248,59 @@ func (e *Engine) commitResult(ctx context.Context, request RunRequest, result wo
 	if err := e.Frontier.SaveAnalysis(ctx, request.CrawlID, request.ProjectID, result.lease, page, issues); err != nil {
 		return err
 	}
+	discoveryPage := page
+	if request.RenderingMode == "rendered" {
+		maximumBytes := min(int64(50<<20), max(int64(1<<20), request.Limits.MaximumBodyBytes*2))
+		renderedResult, renderErr := e.Renderer.Render(ctx, renderer.Request{
+			RequestID: fmt.Sprintf("%s-%d", request.CrawlID, result.lease.CrawlURLID),
+			URL:       result.fetch.FinalURL, Deadline: 30 * time.Second,
+			MaximumRequests: 250, MaximumBytes: maximumBytes,
+		})
+		metadata := database.RenderMetadata{
+			Status: renderedResult.Status, ErrorCode: renderedResult.ErrorCode,
+			FinalURL: renderedResult.FinalURL, RequestCount: renderedResult.RequestCount,
+			TransferredBytes: renderedResult.TransferredBytes,
+		}
+		if renderErr != nil {
+			metadata.Status = "failed"
+			metadata.ErrorCode = "worker_error"
+			if err := e.Frontier.SaveRenderFailure(ctx, result.lease, metadata); err != nil {
+				return err
+			}
+		} else if renderedResult.Status != "completed" {
+			if metadata.Status != "blocked" && metadata.Status != "failed" {
+				metadata.Status = "failed"
+				metadata.ErrorCode = "invalid_result"
+			}
+			if err := e.Frontier.SaveRenderFailure(ctx, result.lease, metadata); err != nil {
+				return err
+			}
+		} else {
+			finalURL := renderedResult.FinalURL
+			if finalURL == "" {
+				finalURL = result.fetch.FinalURL
+			}
+			renderedPage, extractErr := extractor.Extract(finalURL, result.fetch.Header, []byte(renderedResult.HTML))
+			if extractErr != nil {
+				metadata.Status = "failed"
+				metadata.ErrorCode = "extraction_failed"
+				if err := e.Frontier.SaveRenderFailure(ctx, result.lease, metadata); err != nil {
+					return err
+				}
+			} else {
+				renderedIssues := rules.EvaluatePage(rules.PageInput{Page: renderedPage, StatusCode: result.fetch.StatusCode, Headers: result.fetch.Header, Depth: result.lease.Depth}, rules.DefaultThresholds())
+				if err := e.Frontier.SaveRenderedAnalysis(ctx, request.CrawlID, request.ProjectID, result.lease, page, renderedPage, renderedIssues, metadata); err != nil {
+					return err
+				}
+				discoveryPage = renderedPage
+			}
+		}
+	}
 	if result.lease.Depth >= request.Limits.MaximumDepth {
 		return nil
 	}
-	links := make([]string, 0, min(maxLinks, len(page.Links)))
-	for _, link := range page.Links {
+	links := make([]string, 0, min(maxLinks, len(discoveryPage.Links)))
+	for _, link := range discoveryPage.Links {
 		if len(links) >= maxLinks {
 			break
 		}
@@ -257,7 +321,7 @@ func (e *Engine) commitResult(ctx context.Context, request RunRequest, result wo
 			return err
 		}
 	}
-	for _, image := range page.Images {
+	for _, image := range discoveryPage.Images {
 		normalized, err := fetchpolicy.NormalizeURL(image.URL)
 		if err != nil || e.Scope.Evaluate(normalized) != nil {
 			continue

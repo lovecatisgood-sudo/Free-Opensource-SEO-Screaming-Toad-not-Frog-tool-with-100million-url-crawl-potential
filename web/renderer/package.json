@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run src",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   },
@@ -13,6 +13,8 @@
     "@types/node": "22.20.1",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
+  },
+  "dependencies": {
+    "playwright": "1.62.0"
   }
 }
-

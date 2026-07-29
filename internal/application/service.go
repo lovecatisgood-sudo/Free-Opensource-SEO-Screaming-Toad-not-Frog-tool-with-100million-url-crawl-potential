@@ -10,23 +10,26 @@ import (
 	"sync"
 	"time"
 
+	"github.com/seo-auditor/seo-auditor/internal/config"
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
 	"github.com/seo-auditor/seo-auditor/internal/crawler"
 	"github.com/seo-auditor/seo-auditor/internal/database"
 	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
+	"github.com/seo-auditor/seo-auditor/internal/renderer"
 )
 
 const UserAgent = "SEOAuditor/0.1 (+https://github.com/seo-auditor/seo-auditor)"
 
 type Service struct {
-	db          *database.DB
-	frontier    *database.Frontier
-	ctx         context.Context
-	cancel      context.CancelFunc
-	runs        sync.WaitGroup
-	mu          sync.Mutex
-	active      map[contracts.ID]bool
-	artifactDir string
+	db             *database.DB
+	frontier       *database.Frontier
+	ctx            context.Context
+	cancel         context.CancelFunc
+	runs           sync.WaitGroup
+	mu             sync.Mutex
+	active         map[contracts.ID]bool
+	artifactDir    string
+	rendererConfig config.Renderer
 }
 
 func Open(ctx context.Context, dataDirectory string) (*Service, error) {
@@ -37,6 +40,11 @@ func Open(ctx context.Context, dataDirectory string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	rendererConfig, err := config.ResolveRenderer()
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	serviceCtx, cancel := context.WithCancel(ctx)
 	artifactDir := filepath.Join(dataDirectory, "artifacts")
 	if err := os.MkdirAll(artifactDir, 0o700); err != nil {
@@ -44,7 +52,7 @@ func Open(ctx context.Context, dataDirectory string) (*Service, error) {
 		cancel()
 		return nil, err
 	}
-	service := &Service{db: db, frontier: database.NewFrontier(db, 1024), ctx: serviceCtx, cancel: cancel, active: make(map[contracts.ID]bool), artifactDir: artifactDir}
+	service := &Service{db: db, frontier: database.NewFrontier(db, 1024), ctx: serviceCtx, cancel: cancel, active: make(map[contracts.ID]bool), artifactDir: artifactDir, rendererConfig: rendererConfig}
 	if err := service.frontier.RecoverInterruptedCrawls(ctx); err != nil {
 		service.frontier.Close()
 		_ = db.Close()
@@ -88,6 +96,7 @@ type preparedCrawl struct {
 	scope      *fetchpolicy.Scope
 	rawFetcher *fetchpolicy.Fetcher
 	robots     *crawler.RobotsService
+	renderer   *renderer.Supervisor
 	transport  *http.Transport
 }
 
@@ -256,7 +265,19 @@ func (s *Service) buildPrepared(ctx context.Context, result CrawlResult, configu
 	if err != nil {
 		return preparedCrawl{}, err
 	}
-	return preparedCrawl{result: result, config: configuration, seed: seed, scope: scope, rawFetcher: rawFetcher, robots: robots, transport: transport}, nil
+	var renderSupervisor *renderer.Supervisor
+	if configuration.RenderingMode == "rendered" {
+		if !s.rendererConfig.Enabled {
+			transport.CloseIdleConnections()
+			return preparedCrawl{}, errors.New("rendered mode is unavailable; configure the trusted renderer worker at startup")
+		}
+		renderSupervisor = &renderer.Supervisor{
+			NodeBinary: s.rendererConfig.NodeBinary, ScriptPath: s.rendererConfig.ScriptPath,
+			BrowserPath: s.rendererConfig.BrowserPath, ContainerSandbox: s.rendererConfig.ContainerSandbox,
+			Fetcher: rawFetcher,
+		}
+	}
+	return preparedCrawl{result: result, config: configuration, seed: seed, scope: scope, rawFetcher: rawFetcher, robots: robots, renderer: renderSupervisor, transport: transport}, nil
 }
 
 func (s *Service) run(ctx context.Context, prepared preparedCrawl) error {
@@ -312,9 +333,10 @@ func (s *Service) run(ctx context.Context, prepared preparedCrawl) error {
 		Frontier: s.frontier,
 		Fetcher:  crawler.RobotsEnforcingFetcher{Base: prepared.rawFetcher, Robots: prepared.robots},
 		Scope:    prepared.scope, LeaseTime: 2 * time.Minute, MaxLinksPerPage: 10_000,
+		Renderer: prepared.renderer,
 	}
 	return engine.Run(ctx, crawler.RunRequest{
-		CrawlID: prepared.result.CrawlID, ProjectID: prepared.result.ProjectID, Limits: prepared.config.Limits, WorkerID: "local",
+		CrawlID: prepared.result.CrawlID, ProjectID: prepared.result.ProjectID, Limits: prepared.config.Limits, WorkerID: "local", RenderingMode: prepared.config.RenderingMode,
 	})
 }
 

@@ -11,12 +11,23 @@ import (
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
 	"github.com/seo-auditor/seo-auditor/internal/database"
 	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
+	"github.com/seo-auditor/seo-auditor/internal/renderer"
 )
 
 type mapFetcher struct {
 	mu    sync.Mutex
 	pages map[string]string
 	calls map[string]int
+}
+
+type mapRenderer struct{}
+
+func (mapRenderer) Render(_ context.Context, request renderer.Request) (renderer.Result, error) {
+	html := `<html><head><title>Rendered child</title></head><body>child</body></html>`
+	if request.URL == "https://example.com/" {
+		html = `<html><head><title>Rendered root</title></head><body><a href="/client">client</a></body></html>`
+	}
+	return renderer.Result{Status: "completed", HTML: html, FinalURL: request.URL, RequestCount: 1, TransferredBytes: int64(len(html))}, nil
 }
 
 func (f *mapFetcher) Fetch(_ context.Context, raw string) (fetchpolicy.FetchResult, error) {
@@ -31,6 +42,57 @@ func (f *mapFetcher) Fetch(_ context.Context, raw string) (fetchpolicy.FetchResu
 		Body: []byte(body), CompressedBytes: int64(len(body)), DecodedBytes: int64(len(body)),
 		StartedAt: now, FinishedAt: now,
 	}, nil
+}
+
+func TestEngineRenderedModeDiscoversClientLinksAndPreservesRaw(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "auditor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	frontier := database.NewFrontier(db, 32)
+	t.Cleanup(frontier.Close)
+	projectID := contracts.ID("project_rendered_engine")
+	crawlID := contracts.ID("crawl_rendered_engine")
+	if err := frontier.CreateProject(ctx, projectID, "Rendered Engine"); err != nil {
+		t.Fatal(err)
+	}
+	seed, _ := fetchpolicy.NormalizeURL("https://example.com/")
+	limits := contracts.DefaultCrawlLimits()
+	limits.MaximumURLs = 10
+	limits.GlobalConcurrency = 1
+	limits.PerHostConcurrency = 1
+	limits.MinimumHostDelay = 0
+	configuration := contracts.CrawlConfiguration{SeedURL: seed.RequestKey, AllowedHosts: []string{seed.URL.Hostname()}, UserAgent: "test", RenderingMode: "rendered", Limits: limits}
+	if err := frontier.CreateCrawl(ctx, crawlID, projectID, "", seed, configuration); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := frontier.Enqueue(ctx, database.Discovery{CrawlID: crawlID, ProjectID: projectID, URL: seed, DiscoveryKind: "seed", MaximumURLs: limits.MaximumURLs}); err != nil {
+		t.Fatal(err)
+	}
+	scope, _ := fetchpolicy.CompileScope(fetchpolicy.ScopeConfig{AllowedHosts: []string{"example.com"}})
+	fetcher := &mapFetcher{pages: map[string]string{
+		"https://example.com/":       `<html><head><title>Raw root</title></head><body>raw</body></html>`,
+		"https://example.com/client": `<html><head><title>Raw child</title></head><body>raw child</body></html>`,
+	}, calls: make(map[string]int)}
+	engine := &Engine{Frontier: frontier, Fetcher: fetcher, Scope: scope, Renderer: mapRenderer{}, LeaseTime: time.Minute}
+	if err := engine.Run(ctx, RunRequest{CrawlID: crawlID, ProjectID: projectID, Limits: limits, WorkerID: "render-test", RenderingMode: "rendered"}); err != nil {
+		t.Fatal(err)
+	}
+	progress, err := frontier.Progress(ctx, crawlID)
+	if err != nil || progress.Discovered != 2 || progress.Analysed != 2 {
+		t.Fatalf("progress=%+v err=%v", progress, err)
+	}
+	pages, err := frontier.ListPages(ctx, crawlID, contracts.PageRequest{Limit: 10})
+	if err != nil || len(pages.Items) != 2 {
+		t.Fatalf("pages=%+v err=%v", pages, err)
+	}
+	root := pages.Items[0]
+	if root.Title != "Raw root" || root.RenderedTitle != "Rendered root" || root.RenderStatus != "completed" {
+		t.Fatalf("root=%+v", root)
+	}
 }
 
 func TestEngineCrawlsBoundedGraphOnce(t *testing.T) {

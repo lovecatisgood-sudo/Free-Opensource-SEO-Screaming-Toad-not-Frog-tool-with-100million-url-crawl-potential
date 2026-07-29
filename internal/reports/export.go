@@ -19,7 +19,7 @@ type QuerySource interface {
 
 func PagesCSV(ctx context.Context, source QuerySource, crawlID contracts.ID, output io.Writer) error {
 	writer := csv.NewWriter(output)
-	if err := writer.Write([]string{"url", "status_code", "depth", "title", "meta_description", "canonical", "robots", "language", "text_length", "content_hash"}); err != nil {
+	if err := writer.Write([]string{"url", "status_code", "depth", "raw_title", "raw_meta_description", "raw_canonical", "raw_robots", "raw_language", "raw_text_length", "raw_content_hash", "raw_extraction_mode", "render_status", "rendered_title", "rendered_meta_description", "rendered_canonical", "rendered_content_hash"}); err != nil {
 		return err
 	}
 	cursor := ""
@@ -29,7 +29,7 @@ func PagesCSV(ctx context.Context, source QuerySource, crawlID contracts.ID, out
 			return err
 		}
 		for _, item := range page.Items {
-			row := []string{item.URL, fmt.Sprint(item.StatusCode), fmt.Sprint(item.Depth), item.Title, item.MetaDescription, item.CanonicalURL, item.RobotsDirectives, item.Language, fmt.Sprint(item.TextLength), item.ContentHash}
+			row := []string{item.URL, fmt.Sprint(item.StatusCode), fmt.Sprint(item.Depth), item.Title, item.MetaDescription, item.CanonicalURL, item.RobotsDirectives, item.Language, fmt.Sprint(item.TextLength), item.ContentHash, item.ExtractionMode, item.RenderStatus, item.RenderedTitle, item.RenderedMetaDescription, item.RenderedCanonicalURL, item.RenderedContentHash}
 			for index := range row {
 				row[index] = spreadsheetSafe(row[index])
 			}

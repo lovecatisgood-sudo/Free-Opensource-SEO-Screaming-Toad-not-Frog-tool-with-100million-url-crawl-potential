@@ -23,6 +23,43 @@ type Server struct {
 	Port int
 }
 
+type Renderer struct {
+	Enabled          bool
+	NodeBinary       string
+	ScriptPath       string
+	BrowserPath      string
+	ContainerSandbox bool
+}
+
+// ResolveRenderer reads only trusted process-start configuration. None of
+// these paths can be supplied by a crawl profile, API request, or MCP tool.
+func ResolveRenderer() (Renderer, error) {
+	rawScript := os.Getenv("SEO_AUDITOR_RENDERER_SCRIPT")
+	if rawScript == "" {
+		return Renderer{}, nil
+	}
+	script, err := cleanAbsolute(rawScript)
+	if err != nil {
+		return Renderer{}, fmt.Errorf("renderer script: %w", err)
+	}
+	browserPath := os.Getenv("PLAYWRIGHT_BROWSERS_PATH")
+	if browserPath != "" {
+		browserPath, err = cleanAbsolute(browserPath)
+		if err != nil {
+			return Renderer{}, fmt.Errorf("renderer browser path: %w", err)
+		}
+	}
+	node := os.Getenv("SEO_AUDITOR_NODE_BINARY")
+	if node == "" {
+		node = "node"
+	}
+	containerValue := os.Getenv("SEO_AUDITOR_CONTAINER_SANDBOX")
+	if containerValue != "" && containerValue != "0" && containerValue != "1" {
+		return Renderer{}, errors.New("SEO_AUDITOR_CONTAINER_SANDBOX must be 0 or 1")
+	}
+	return Renderer{Enabled: true, NodeBinary: node, ScriptPath: script, BrowserPath: browserPath, ContainerSandbox: containerValue == "1"}, nil
+}
+
 func ResolveServer() (Server, error) {
 	host := os.Getenv("SEO_AUDITOR_BIND_HOST")
 	if host == "" {

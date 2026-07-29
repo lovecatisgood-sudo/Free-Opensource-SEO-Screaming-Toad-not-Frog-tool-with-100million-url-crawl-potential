@@ -29,6 +29,8 @@ x-sandbox: &sandbox
     SEO_AUDITOR_ARTIFACT_DIR: /workspace/.artifacts
     SEO_AUDITOR_BIND_HOST: 127.0.0.1
     SEO_AUDITOR_BIND_PORT: "7331"
+    SEO_AUDITOR_RENDERER_SCRIPT: /workspace/web/renderer/dist/worker.js
+    SEO_AUDITOR_CONTAINER_SANDBOX: "1"
     GOMEMLIMIT: 4GiB
 
 services:

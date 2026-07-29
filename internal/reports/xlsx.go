@@ -49,7 +49,7 @@ func writePagesSheet(ctx context.Context, source QuerySource, crawlID contracts.
 		return err
 	}
 	row := 1
-	if err := writeXMLRow(output, row, []string{"URL", "Status Code", "Depth", "Title", "Meta Description", "Canonical", "Robots", "Language", "Text Length", "Content Hash"}); err != nil {
+	if err := writeXMLRow(output, row, []string{"URL", "Status Code", "Depth", "Raw Title", "Raw Meta Description", "Raw Canonical", "Raw Robots", "Raw Language", "Raw Text Length", "Raw Content Hash", "Raw Extraction Mode", "Render Status", "Rendered Title", "Rendered Meta Description", "Rendered Canonical", "Rendered Content Hash"}); err != nil {
 		return err
 	}
 	row++
@@ -63,7 +63,7 @@ func writePagesSheet(ctx context.Context, source QuerySource, crawlID contracts.
 			if row > maximumXLSXDataRows+1 {
 				return fmt.Errorf("XLSX row limit exceeded")
 			}
-			values := []string{item.URL, strconv.Itoa(item.StatusCode), strconv.Itoa(item.Depth), item.Title, item.MetaDescription, item.CanonicalURL, item.RobotsDirectives, item.Language, strconv.Itoa(item.TextLength), item.ContentHash}
+			values := []string{item.URL, strconv.Itoa(item.StatusCode), strconv.Itoa(item.Depth), item.Title, item.MetaDescription, item.CanonicalURL, item.RobotsDirectives, item.Language, strconv.Itoa(item.TextLength), item.ContentHash, item.ExtractionMode, item.RenderStatus, item.RenderedTitle, item.RenderedMetaDescription, item.RenderedCanonicalURL, item.RenderedContentHash}
 			if err := writeXMLRow(output, row, values); err != nil {
 				return err
 			}

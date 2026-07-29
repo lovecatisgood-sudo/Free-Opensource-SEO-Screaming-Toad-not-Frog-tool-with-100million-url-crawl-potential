@@ -37,3 +37,30 @@ func TestResolveServerRejectsPublicBinding(t *testing.T) {
 		t.Fatal("expected public bind rejection")
 	}
 }
+
+func TestResolveRendererUsesTrustedStartupPaths(t *testing.T) {
+	t.Setenv("SEO_AUDITOR_RENDERER_SCRIPT", filepath.Join(t.TempDir(), "worker.js"))
+	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", filepath.Join(t.TempDir(), "browsers"))
+	t.Setenv("SEO_AUDITOR_NODE_BINARY", "node-pinned")
+	t.Setenv("SEO_AUDITOR_CONTAINER_SANDBOX", "1")
+	configuration, err := ResolveRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configuration.Enabled || !filepath.IsAbs(configuration.ScriptPath) || !filepath.IsAbs(configuration.BrowserPath) || configuration.NodeBinary != "node-pinned" || !configuration.ContainerSandbox {
+		t.Fatalf("configuration=%+v", configuration)
+	}
+}
+
+func TestResolveRendererDisabledAndRejectsAmbiguousSandboxFlag(t *testing.T) {
+	t.Setenv("SEO_AUDITOR_RENDERER_SCRIPT", "")
+	configuration, err := ResolveRenderer()
+	if err != nil || configuration.Enabled {
+		t.Fatalf("configuration=%+v err=%v", configuration, err)
+	}
+	t.Setenv("SEO_AUDITOR_RENDERER_SCRIPT", filepath.Join(t.TempDir(), "worker.js"))
+	t.Setenv("SEO_AUDITOR_CONTAINER_SANDBOX", "yes")
+	if _, err := ResolveRenderer(); err == nil {
+		t.Fatal("expected ambiguous sandbox flag to be rejected")
+	}
+}

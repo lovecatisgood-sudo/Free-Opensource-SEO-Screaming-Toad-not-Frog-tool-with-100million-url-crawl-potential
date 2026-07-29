@@ -14,14 +14,15 @@ import (
 )
 
 type AuditSummary struct {
-	CrawlID          contracts.ID          `json:"crawl_id"`
-	Status           contracts.CrawlStatus `json:"status"`
-	Discovered       int64                 `json:"discovered"`
-	Fetched          int64                 `json:"fetched"`
-	Analysed         int64                 `json:"analysed"`
-	Failed           int64                 `json:"failed"`
-	IssuesBySeverity map[string]int64      `json:"issues_by_severity"`
-	ResponsesByClass map[string]int64      `json:"responses_by_class"`
+	CrawlID           contracts.ID          `json:"crawl_id"`
+	Status            contracts.CrawlStatus `json:"status"`
+	Discovered        int64                 `json:"discovered"`
+	Fetched           int64                 `json:"fetched"`
+	Analysed          int64                 `json:"analysed"`
+	Failed            int64                 `json:"failed"`
+	IssuesBySeverity  map[string]int64      `json:"issues_by_severity"`
+	ResponsesByClass  map[string]int64      `json:"responses_by_class"`
+	RenderingByStatus map[string]int64      `json:"rendering_by_status,omitempty"`
 }
 
 type IssueRecord struct {
@@ -35,21 +36,27 @@ type IssueRecord struct {
 	CreatedAt    string `json:"created_at"`
 }
 type PageRecord struct {
-	ID               int64  `json:"id"`
-	URL              string `json:"url"`
-	Title            string `json:"title"`
-	MetaDescription  string `json:"meta_description"`
-	CanonicalURL     string `json:"canonical_url"`
-	RobotsDirectives string `json:"robots_directives"`
-	Language         string `json:"language"`
-	ContentHash      string `json:"content_hash"`
-	StatusCode       int    `json:"status_code"`
-	Depth            int    `json:"depth"`
-	TextLength       int    `json:"text_length"`
+	ID                      int64  `json:"id"`
+	URL                     string `json:"url"`
+	Title                   string `json:"title"`
+	MetaDescription         string `json:"meta_description"`
+	CanonicalURL            string `json:"canonical_url"`
+	RobotsDirectives        string `json:"robots_directives"`
+	Language                string `json:"language"`
+	ContentHash             string `json:"content_hash"`
+	StatusCode              int    `json:"status_code"`
+	Depth                   int    `json:"depth"`
+	TextLength              int    `json:"text_length"`
+	ExtractionMode          string `json:"extraction_mode"`
+	RenderStatus            string `json:"render_status,omitempty"`
+	RenderedTitle           string `json:"rendered_title,omitempty"`
+	RenderedMetaDescription string `json:"rendered_meta_description,omitempty"`
+	RenderedCanonicalURL    string `json:"rendered_canonical_url,omitempty"`
+	RenderedContentHash     string `json:"rendered_content_hash,omitempty"`
 }
 
 func (f *Frontier) Summary(ctx context.Context, crawlID contracts.ID) (AuditSummary, error) {
-	summary := AuditSummary{CrawlID: crawlID, IssuesBySeverity: map[string]int64{}, ResponsesByClass: map[string]int64{}}
+	summary := AuditSummary{CrawlID: crawlID, IssuesBySeverity: map[string]int64{}, ResponsesByClass: map[string]int64{}, RenderingByStatus: map[string]int64{}}
 	if err := f.db.QueryRowContext(ctx, `SELECT status, discovered_count, fetched_count, analysed_count, failed_count FROM crawl WHERE id = ?`, crawlID).Scan(&summary.Status, &summary.Discovered, &summary.Fetched, &summary.Analysed, &summary.Failed); err != nil {
 		return summary, err
 	}
@@ -82,7 +89,26 @@ func (f *Frontier) Summary(ctx context.Context, crawlID contracts.ID) (AuditSumm
 		}
 		summary.ResponsesByClass[key] = count
 	}
-	return summary, rows.Err()
+	if err := rows.Err(); err != nil {
+		return summary, err
+	}
+	if err := rows.Close(); err != nil {
+		return summary, err
+	}
+	renderRows, err := f.db.QueryContext(ctx, `SELECT status,count(*) FROM rendered_page WHERE crawl_url_id IN (SELECT id FROM crawl_url WHERE crawl_id=?) GROUP BY status`, crawlID)
+	if err != nil {
+		return summary, err
+	}
+	defer renderRows.Close()
+	for renderRows.Next() {
+		var status string
+		var count int64
+		if err := renderRows.Scan(&status, &count); err != nil {
+			return summary, err
+		}
+		summary.RenderingByStatus[status] = count
+	}
+	return summary, renderRows.Err()
 }
 
 func (f *Frontier) ListIssues(ctx context.Context, crawlID contracts.ID, page contracts.PageRequest) (contracts.Page[IssueRecord], error) {
@@ -110,10 +136,10 @@ func (f *Frontier) ListPages(ctx context.Context, crawlID contracts.ID, page con
 	}
 	search := likeSearch(page.Search)
 	return listKeyset(ctx, page, func(after int64, limit int) (*sql.Rows, error) {
-		return f.db.QueryContext(ctx, `SELECT p.id, u.request_key, COALESCE(fa.status_code, 0), cu.depth, COALESCE(p.title,''), COALESCE(p.meta_description,''), COALESCE(p.canonical_url,''), COALESCE(p.robots_directives,''), COALESCE(p.language,''), p.text_length, COALESCE(p.content_hash,'') FROM page p JOIN crawl_url cu ON cu.id = p.crawl_url_id JOIN url u ON u.id = cu.url_id LEFT JOIN fetch_attempt fa ON fa.crawl_url_id = cu.id AND fa.attempt = cu.attempt_count WHERE cu.crawl_id = ? AND p.id > ? AND (?='' OR u.request_key LIKE ? ESCAPE '\' OR COALESCE(p.title,'') LIKE ? ESCAPE '\') ORDER BY p.id LIMIT ?`, crawlID, after, page.Search, search, search, limit)
+		return f.db.QueryContext(ctx, `SELECT p.id, u.request_key, COALESCE(fa.status_code, 0), cu.depth, COALESCE(p.title,''), COALESCE(p.meta_description,''), COALESCE(p.canonical_url,''), COALESCE(p.robots_directives,''), COALESCE(p.language,''), p.text_length, COALESCE(p.content_hash,''),p.extraction_mode,COALESCE(rp.status,''),COALESCE(rp.title,''),COALESCE(rp.meta_description,''),COALESCE(rp.canonical_url,''),COALESCE(rp.content_hash,'') FROM page p JOIN crawl_url cu ON cu.id = p.crawl_url_id JOIN url u ON u.id = cu.url_id LEFT JOIN fetch_attempt fa ON fa.crawl_url_id = cu.id AND fa.attempt = cu.attempt_count LEFT JOIN rendered_page rp ON rp.crawl_url_id=cu.id WHERE cu.crawl_id = ? AND p.id > ? AND (?='' OR u.request_key LIKE ? ESCAPE '\' OR COALESCE(p.title,'') LIKE ? ESCAPE '\' OR COALESCE(rp.title,'') LIKE ? ESCAPE '\') ORDER BY p.id LIMIT ?`, crawlID, after, page.Search, search, search, search, limit)
 	}, func(rows *sql.Rows) (PageRecord, error) {
 		var item PageRecord
-		err := rows.Scan(&item.ID, &item.URL, &item.StatusCode, &item.Depth, &item.Title, &item.MetaDescription, &item.CanonicalURL, &item.RobotsDirectives, &item.Language, &item.TextLength, &item.ContentHash)
+		err := rows.Scan(&item.ID, &item.URL, &item.StatusCode, &item.Depth, &item.Title, &item.MetaDescription, &item.CanonicalURL, &item.RobotsDirectives, &item.Language, &item.TextLength, &item.ContentHash, &item.ExtractionMode, &item.RenderStatus, &item.RenderedTitle, &item.RenderedMetaDescription, &item.RenderedCanonicalURL, &item.RenderedContentHash)
 		return item, err
 	}, func(item PageRecord) int64 { return item.ID })
 }

@@ -3,8 +3,11 @@ package database
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
+	"github.com/seo-auditor/seo-auditor/internal/extractor"
 )
 
 type HeadingRecord struct {
@@ -13,13 +16,14 @@ type HeadingRecord struct {
 	Text     string `json:"text"`
 }
 type LinkRecord struct {
-	ID         int64  `json:"id"`
-	SourceURL  string `json:"source_url"`
-	TargetURL  string `json:"target_url"`
-	RawTarget  string `json:"raw_target"`
-	AnchorText string `json:"anchor_text"`
-	Rel        string `json:"rel"`
-	Kind       string `json:"kind"`
+	ID             int64  `json:"id"`
+	SourceURL      string `json:"source_url"`
+	TargetURL      string `json:"target_url"`
+	RawTarget      string `json:"raw_target"`
+	AnchorText     string `json:"anchor_text"`
+	Rel            string `json:"rel"`
+	Kind           string `json:"kind"`
+	ExtractionMode string `json:"extraction_mode"`
 }
 type ImageRecord struct {
 	URL        string `json:"url"`
@@ -39,21 +43,52 @@ type StructuredDataRecord struct {
 	EvidenceJSON string `json:"evidence_json"`
 }
 type PageDetail struct {
-	Page           PageRecord             `json:"page"`
-	Headings       []HeadingRecord        `json:"headings"`
-	Inlinks        []LinkRecord           `json:"inlinks"`
-	Outlinks       []LinkRecord           `json:"outlinks"`
-	Images         []ImageRecord          `json:"images"`
-	Hreflangs      []HreflangRecord       `json:"hreflang"`
-	StructuredData []StructuredDataRecord `json:"structured_data"`
-	Issues         []IssueRecord          `json:"issues"`
+	Page              PageRecord               `json:"page"`
+	Headings          []HeadingRecord          `json:"headings"`
+	Inlinks           []LinkRecord             `json:"inlinks"`
+	Outlinks          []LinkRecord             `json:"outlinks"`
+	Images            []ImageRecord            `json:"images"`
+	Hreflangs         []HreflangRecord         `json:"hreflang"`
+	StructuredData    []StructuredDataRecord   `json:"structured_data"`
+	Issues            []IssueRecord            `json:"issues"`
+	Rendered          *RenderedPageRecord      `json:"rendered,omitempty"`
+	RenderDifferences []RenderDifferenceRecord `json:"render_differences"`
+}
+
+type RenderedPageRecord struct {
+	ID               int64                      `json:"id"`
+	Status           string                     `json:"status"`
+	ErrorCode        string                     `json:"error_code,omitempty"`
+	FinalURL         string                     `json:"final_url,omitempty"`
+	RequestCount     int                        `json:"request_count"`
+	TransferredBytes int64                      `json:"transferred_bytes"`
+	Title            string                     `json:"title,omitempty"`
+	MetaDescription  string                     `json:"meta_description,omitempty"`
+	CanonicalURL     string                     `json:"canonical_url,omitempty"`
+	RobotsDirectives string                     `json:"robots_directives,omitempty"`
+	Language         string                     `json:"language,omitempty"`
+	TextLength       int                        `json:"text_length"`
+	ContentHash      string                     `json:"content_hash,omitempty"`
+	HTMLHash         string                     `json:"html_hash,omitempty"`
+	Headings         []extractor.Heading        `json:"headings"`
+	Images           []extractor.Image          `json:"images"`
+	Hreflangs        []extractor.Hreflang       `json:"hreflang"`
+	StructuredData   []extractor.StructuredData `json:"structured_data"`
+	Social           map[string]string          `json:"social"`
+	RenderedAt       string                     `json:"rendered_at"`
+}
+
+type RenderDifferenceRecord struct {
+	Field         string `json:"field"`
+	RawValue      string `json:"raw_value"`
+	RenderedValue string `json:"rendered_value"`
 }
 
 func (f *Frontier) GetPage(ctx context.Context, crawlID contracts.ID, pageID int64) (PageDetail, error) {
 	var result PageDetail
-	err := f.db.QueryRowContext(ctx, `SELECT p.id,u.request_key,COALESCE(fa.status_code,0),cu.depth,COALESCE(p.title,''),COALESCE(p.meta_description,''),COALESCE(p.canonical_url,''),COALESCE(p.robots_directives,''),COALESCE(p.language,''),p.text_length,COALESCE(p.content_hash,'')
+	err := f.db.QueryRowContext(ctx, `SELECT p.id,u.request_key,COALESCE(fa.status_code,0),cu.depth,COALESCE(p.title,''),COALESCE(p.meta_description,''),COALESCE(p.canonical_url,''),COALESCE(p.robots_directives,''),COALESCE(p.language,''),p.text_length,COALESCE(p.content_hash,''),p.extraction_mode
 FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url u ON u.id=cu.url_id LEFT JOIN fetch_attempt fa ON fa.crawl_url_id=cu.id AND fa.attempt=cu.attempt_count WHERE cu.crawl_id=? AND p.id=?`, crawlID, pageID).Scan(
-		&result.Page.ID, &result.Page.URL, &result.Page.StatusCode, &result.Page.Depth, &result.Page.Title, &result.Page.MetaDescription, &result.Page.CanonicalURL, &result.Page.RobotsDirectives, &result.Page.Language, &result.Page.TextLength, &result.Page.ContentHash)
+		&result.Page.ID, &result.Page.URL, &result.Page.StatusCode, &result.Page.Depth, &result.Page.Title, &result.Page.MetaDescription, &result.Page.CanonicalURL, &result.Page.RobotsDirectives, &result.Page.Language, &result.Page.TextLength, &result.Page.ContentHash, &result.Page.ExtractionMode)
 	if err != nil {
 		return result, err
 	}
@@ -64,6 +99,7 @@ FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url u ON u.id=cu.url_
 	result.Hreflangs = []HreflangRecord{}
 	result.StructuredData = []StructuredDataRecord{}
 	result.Issues = []IssueRecord{}
+	result.RenderDifferences = []RenderDifferenceRecord{}
 	if err := scanRows(ctx, f.db, `SELECT position,level,text FROM heading WHERE page_id=? ORDER BY position`, []any{pageID}, func(rows *sql.Rows) error {
 		var item HeadingRecord
 		if err := rows.Scan(&item.Position, &item.Level, &item.Text); err != nil {
@@ -74,9 +110,9 @@ FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url u ON u.id=cu.url_
 	}); err != nil {
 		return result, err
 	}
-	if err := scanRows(ctx, f.db, `SELECT l.id,su.request_key,COALESCE(tu.request_key,''),l.raw_target,l.anchor_text,l.rel,l.link_kind FROM link l JOIN url su ON su.id=l.source_url_id LEFT JOIN url tu ON tu.id=l.target_url_id WHERE l.crawl_id=? AND l.source_url_id=(SELECT cu.url_id FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id WHERE p.id=?) ORDER BY l.id LIMIT 10000`, []any{crawlID, pageID}, func(rows *sql.Rows) error {
+	if err := scanRows(ctx, f.db, `SELECT l.id,su.request_key,COALESCE(tu.request_key,''),l.raw_target,l.anchor_text,l.rel,l.link_kind,l.extraction_mode FROM link l JOIN url su ON su.id=l.source_url_id LEFT JOIN url tu ON tu.id=l.target_url_id WHERE l.crawl_id=? AND l.source_url_id=(SELECT cu.url_id FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id WHERE p.id=?) ORDER BY l.id LIMIT 10000`, []any{crawlID, pageID}, func(rows *sql.Rows) error {
 		var item LinkRecord
-		if err := rows.Scan(&item.ID, &item.SourceURL, &item.TargetURL, &item.RawTarget, &item.AnchorText, &item.Rel, &item.Kind); err != nil {
+		if err := rows.Scan(&item.ID, &item.SourceURL, &item.TargetURL, &item.RawTarget, &item.AnchorText, &item.Rel, &item.Kind, &item.ExtractionMode); err != nil {
 			return err
 		}
 		result.Outlinks = append(result.Outlinks, item)
@@ -84,9 +120,9 @@ FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url u ON u.id=cu.url_
 	}); err != nil {
 		return result, err
 	}
-	if err := scanRows(ctx, f.db, `SELECT l.id,su.request_key,COALESCE(tu.request_key,''),l.raw_target,l.anchor_text,l.rel,l.link_kind FROM link l JOIN url su ON su.id=l.source_url_id LEFT JOIN url tu ON tu.id=l.target_url_id WHERE l.crawl_id=? AND l.target_url_id=(SELECT cu.url_id FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id WHERE p.id=?) ORDER BY l.id LIMIT 10000`, []any{crawlID, pageID}, func(rows *sql.Rows) error {
+	if err := scanRows(ctx, f.db, `SELECT l.id,su.request_key,COALESCE(tu.request_key,''),l.raw_target,l.anchor_text,l.rel,l.link_kind,l.extraction_mode FROM link l JOIN url su ON su.id=l.source_url_id LEFT JOIN url tu ON tu.id=l.target_url_id WHERE l.crawl_id=? AND l.target_url_id=(SELECT cu.url_id FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id WHERE p.id=?) ORDER BY l.id LIMIT 10000`, []any{crawlID, pageID}, func(rows *sql.Rows) error {
 		var item LinkRecord
-		if err := rows.Scan(&item.ID, &item.SourceURL, &item.TargetURL, &item.RawTarget, &item.AnchorText, &item.Rel, &item.Kind); err != nil {
+		if err := rows.Scan(&item.ID, &item.SourceURL, &item.TargetURL, &item.RawTarget, &item.AnchorText, &item.Rel, &item.Kind, &item.ExtractionMode); err != nil {
 			return err
 		}
 		result.Inlinks = append(result.Inlinks, item)
@@ -124,7 +160,7 @@ FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url u ON u.id=cu.url_
 	}); err != nil {
 		return result, err
 	}
-	if err := scanRows(ctx, f.db, `SELECT id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at FROM issue WHERE crawl_id=? AND subject_type='page' AND subject_id=CAST(? AS TEXT) ORDER BY id LIMIT 1000`, []any{crawlID, pageID}, func(rows *sql.Rows) error {
+	if err := scanRows(ctx, f.db, `SELECT id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at FROM issue WHERE crawl_id=? AND ((subject_type='page' AND subject_id=CAST(? AS TEXT)) OR (subject_type='rendered_page' AND subject_id=CAST((SELECT rp.id FROM rendered_page rp JOIN page p ON p.crawl_url_id=rp.crawl_url_id WHERE p.id=?) AS TEXT))) ORDER BY id LIMIT 1000`, []any{crawlID, pageID, pageID}, func(rows *sql.Rows) error {
 		var item IssueRecord
 		if err := rows.Scan(&item.ID, &item.RuleID, &item.RuleVersion, &item.SubjectType, &item.SubjectID, &item.Severity, &item.EvidenceJSON, &item.CreatedAt); err != nil {
 			return err
@@ -134,15 +170,40 @@ FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url u ON u.id=cu.url_
 	}); err != nil {
 		return result, err
 	}
+	var rendered RenderedPageRecord
+	var headingsJSON, imagesJSON, hreflangJSON, structuredJSON, socialJSON string
+	err = f.db.QueryRowContext(ctx, `SELECT id,status,error_code,final_url,request_count,transferred_bytes,COALESCE(title,''),COALESCE(meta_description,''),COALESCE(canonical_url,''),COALESCE(robots_directives,''),COALESCE(language,''),text_length,COALESCE(content_hash,''),COALESCE(html_hash,''),headings_json,images_json,hreflang_json,structured_data_json,social_json,rendered_at FROM rendered_page WHERE crawl_url_id=(SELECT crawl_url_id FROM page WHERE id=?)`, pageID).Scan(
+		&rendered.ID, &rendered.Status, &rendered.ErrorCode, &rendered.FinalURL, &rendered.RequestCount, &rendered.TransferredBytes,
+		&rendered.Title, &rendered.MetaDescription, &rendered.CanonicalURL, &rendered.RobotsDirectives, &rendered.Language,
+		&rendered.TextLength, &rendered.ContentHash, &rendered.HTMLHash, &headingsJSON, &imagesJSON, &hreflangJSON, &structuredJSON, &socialJSON, &rendered.RenderedAt)
+	if err != nil && err != sql.ErrNoRows {
+		return result, err
+	}
+	if err == nil {
+		if json.Unmarshal([]byte(headingsJSON), &rendered.Headings) != nil || json.Unmarshal([]byte(imagesJSON), &rendered.Images) != nil || json.Unmarshal([]byte(hreflangJSON), &rendered.Hreflangs) != nil || json.Unmarshal([]byte(structuredJSON), &rendered.StructuredData) != nil || json.Unmarshal([]byte(socialJSON), &rendered.Social) != nil {
+			return result, fmt.Errorf("decode rendered evidence")
+		}
+		result.Rendered = &rendered
+		if err := scanRows(ctx, f.db, `SELECT field,raw_value,rendered_value FROM render_difference WHERE crawl_url_id=(SELECT crawl_url_id FROM page WHERE id=?) ORDER BY field`, []any{pageID}, func(rows *sql.Rows) error {
+			var item RenderDifferenceRecord
+			if err := rows.Scan(&item.Field, &item.RawValue, &item.RenderedValue); err != nil {
+				return err
+			}
+			result.RenderDifferences = append(result.RenderDifferences, item)
+			return nil
+		}); err != nil {
+			return result, err
+		}
+	}
 	return result, nil
 }
 
 func (f *Frontier) ListLinks(ctx context.Context, crawlID contracts.ID, page contracts.PageRequest) (contracts.Page[LinkRecord], error) {
 	return listKeyset(ctx, page, func(after int64, limit int) (*sql.Rows, error) {
-		return f.db.QueryContext(ctx, `SELECT l.id,su.request_key,COALESCE(tu.request_key,''),l.raw_target,l.anchor_text,l.rel,l.link_kind FROM link l JOIN url su ON su.id=l.source_url_id LEFT JOIN url tu ON tu.id=l.target_url_id WHERE l.crawl_id=? AND l.id>? ORDER BY l.id LIMIT ?`, crawlID, after, limit)
+		return f.db.QueryContext(ctx, `SELECT l.id,su.request_key,COALESCE(tu.request_key,''),l.raw_target,l.anchor_text,l.rel,l.link_kind,l.extraction_mode FROM link l JOIN url su ON su.id=l.source_url_id LEFT JOIN url tu ON tu.id=l.target_url_id WHERE l.crawl_id=? AND l.id>? ORDER BY l.id LIMIT ?`, crawlID, after, limit)
 	}, func(rows *sql.Rows) (LinkRecord, error) {
 		var item LinkRecord
-		err := rows.Scan(&item.ID, &item.SourceURL, &item.TargetURL, &item.RawTarget, &item.AnchorText, &item.Rel, &item.Kind)
+		err := rows.Scan(&item.ID, &item.SourceURL, &item.TargetURL, &item.RawTarget, &item.AnchorText, &item.Rel, &item.Kind, &item.ExtractionMode)
 		return item, err
 	}, func(item LinkRecord) int64 { return item.ID })
 }

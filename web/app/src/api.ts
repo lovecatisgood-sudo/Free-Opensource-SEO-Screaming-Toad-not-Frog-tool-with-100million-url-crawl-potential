@@ -1,7 +1,7 @@
 export interface CrawlProgress { crawl_id: string; status: string; discovered: number; queued: number; fetched: number; analysed: number; failed: number; terminal_reason?: string; updated_at: string }
 export interface CrawlResult { project_id: string; crawl_id: string; progress: CrawlProgress }
-export interface Summary { crawl_id: string; status: string; discovered: number; fetched: number; analysed: number; failed: number; issues_by_severity: Record<string, number>; responses_by_class: Record<string, number> }
-export interface PageRecord { id: number; url: string; title: string; meta_description: string; status_code: number; depth: number; canonical_url: string }
+export interface Summary { crawl_id: string; status: string; discovered: number; fetched: number; analysed: number; failed: number; issues_by_severity: Record<string, number>; responses_by_class: Record<string, number>; rendering_by_status: Record<string, number> }
+export interface PageRecord { id: number; url: string; title: string; meta_description: string; status_code: number; depth: number; canonical_url: string; extraction_mode:string; render_status?:string; rendered_title?:string; rendered_meta_description?:string; rendered_canonical_url?:string; rendered_content_hash?:string }
 export interface IssueRecord { id: number; rule_id: string; rule_version: number; severity: string; evidence_json: string; subject_type: string; subject_id: string }
 export interface Page<T> { items: T[]; next_cursor?: string }
 export interface Project { project_id: string; name: string; archived: boolean; created_at: string; updated_at: string }
@@ -10,7 +10,9 @@ export interface CrawlConfiguration { seed_url: string; allowed_hosts: string[];
 export interface Profile { profile_id: string; project_id: string; version: number; name: string; configuration: CrawlConfiguration; created_at: string }
 export interface ScopeDecision { url: string; normalized_url?: string; allowed: boolean; reason?: string }
 export interface Comparison { base_crawl_id: string; target_crawl_id: string; configuration_match: boolean; added_pages: number; removed_pages: number; changed_pages: number; new_issues: number; fixed_issues: number }
-export interface PageDetail { page: PageRecord; headings: Array<{level:number;text:string}>; inlinks: unknown[]; outlinks: unknown[]; images: unknown[]; hreflang: unknown[]; structured_data: unknown[]; issues: IssueRecord[] }
+export interface RenderedPage { status:string; error_code?:string; final_url?:string; request_count:number; transferred_bytes:number; title?:string; meta_description?:string; canonical_url?:string; text_length:number; headings:Array<{level:number;text:string}> }
+export interface RenderDifference { field:string; raw_value:string; rendered_value:string }
+export interface PageDetail { page: PageRecord; headings: Array<{level:number;text:string}>; inlinks: unknown[]; outlinks: unknown[]; images: unknown[]; hreflang: unknown[]; structured_data: unknown[]; issues: IssueRecord[]; rendered?:RenderedPage; render_differences:RenderDifference[] }
 export interface IssueExplanation { issue: IssueRecord; rule: { title:string; category:string; remediation:string; limitations:string; version:number; default_severity:string } }
 
 let csrfToken = "";
