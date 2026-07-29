@@ -105,6 +105,9 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 		}
 		if len(leases) == 0 {
 			if progress.Queued == 0 {
+				if err := e.Frontier.FinalizeAudit(runCtx, request.CrawlID, rules.DefaultThresholds().DeepPageDepth); err != nil {
+					return err
+				}
 				return e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlRunning}, contracts.CrawlCompleted, "")
 			}
 			timer := time.NewTimer(100 * time.Millisecond)
@@ -214,7 +217,7 @@ func (e *Engine) commitResult(ctx context.Context, request RunRequest, result wo
 	if err := e.Frontier.CompleteFetch(ctx, request.CrawlID, database.FetchCompletion{
 		Lease: result.lease, StatusCode: result.fetch.StatusCode, ContentType: result.fetch.ContentType,
 		CompressedBytes: result.fetch.CompressedBytes, DecodedBytes: result.fetch.DecodedBytes,
-		StartedAt: result.fetch.StartedAt, FinishedAt: result.fetch.FinishedAt,
+		StartedAt: result.fetch.StartedAt, FinishedAt: result.fetch.FinishedAt, Redirects: result.fetch.Redirects,
 	}); err != nil {
 		return err
 	}
@@ -248,6 +251,20 @@ func (e *Engine) commitResult(ctx context.Context, request RunRequest, result wo
 		_, err = e.Frontier.Enqueue(ctx, database.Discovery{
 			CrawlID: request.CrawlID, ProjectID: request.ProjectID, URL: normalized,
 			Depth: result.lease.Depth + 1, DiscoveryKind: "link", DiscoveredFrom: &parent,
+			MaximumURLs: request.Limits.MaximumURLs,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	for _, image := range page.Images {
+		normalized, err := fetchpolicy.NormalizeURL(image.URL)
+		if err != nil || e.Scope.Evaluate(normalized) != nil {
+			continue
+		}
+		_, err = e.Frontier.Enqueue(ctx, database.Discovery{
+			CrawlID: request.CrawlID, ProjectID: request.ProjectID, URL: normalized,
+			Depth: result.lease.Depth + 1, DiscoveryKind: "image", DiscoveredFrom: &parent,
 			MaximumURLs: request.Limits.MaximumURLs,
 		})
 		if err != nil {

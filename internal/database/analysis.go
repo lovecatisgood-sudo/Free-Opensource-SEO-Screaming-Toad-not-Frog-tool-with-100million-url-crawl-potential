@@ -19,6 +19,9 @@ func (f *Frontier) SaveAnalysis(ctx context.Context, crawlID, projectID contract
 		var canonical any
 		if len(page.Canonicals) > 0 {
 			canonical = page.Canonicals[0]
+			if normalized, err := fetchpolicy.NormalizeURL(page.Canonicals[0]); err == nil {
+				canonical = normalized.RequestKey
+			}
 		}
 		social, _ := json.Marshal(page.Social)
 		result, err := tx.ExecContext(ctx, `INSERT INTO page(crawl_url_id, extraction_mode, title, meta_description, canonical_url, robots_directives, language, text_length, content_hash, extracted_at, viewport, html_hash, x_robots_tag, social_json)

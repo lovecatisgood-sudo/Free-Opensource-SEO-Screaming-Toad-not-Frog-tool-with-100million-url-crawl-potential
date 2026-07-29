@@ -1,13 +1,3 @@
 import { describe, expect, it } from "vitest";
-import { foundationStatus } from "./App";
 
-describe("foundationStatus", () => {
-  it("exposes each enforced foundation boundary", () => {
-    expect(foundationStatus.map(({ phase }) => phase)).toEqual([
-      "Guarded network",
-      "Durable storage",
-      "MCP",
-    ]);
-  });
-});
-
+describe("local application policy", () => { it("keeps the app outside public indexing", async () => { const html = await import("../index.html?raw"); expect(html.default).toContain('name="robots" content="noindex,nofollow,noarchive"'); }); });

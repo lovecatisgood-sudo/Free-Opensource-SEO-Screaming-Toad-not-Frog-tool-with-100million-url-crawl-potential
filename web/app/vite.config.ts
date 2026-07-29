@@ -4,7 +4,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react()],
   build: {
-    sourcemap: true,
+    outDir: "../../internal/webui/assets",
+    emptyOutDir: true,
+    sourcemap: false,
     target: "es2023",
   },
   test: {

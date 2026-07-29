@@ -30,3 +30,10 @@ func TestResolveAndEnsurePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveServerRejectsPublicBinding(t *testing.T) {
+	t.Setenv("SEO_AUDITOR_BIND_HOST", "0.0.0.0")
+	if _, err := ResolveServer(); err == nil {
+		t.Fatal("expected public bind rejection")
+	}
+}

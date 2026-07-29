@@ -201,31 +201,9 @@ func (s *RobotsService) Check(ctx context.Context, raw string) (RobotsDecision, 
 		return RobotsDecision{}, err
 	}
 	key := target.Scheme + "://" + target.Host
-	s.mu.Lock()
-	cached, exists := s.cache[key]
-	s.mu.Unlock()
-	if !exists || time.Now().After(cached.expires) {
-		result, err := s.fetcher.Fetch(ctx, key+"/robots.txt")
-		if err != nil {
-			return RobotsDecision{}, fmt.Errorf("fetch robots.txt: %w", err)
-		}
-		cached = cachedRobots{status: result.StatusCode, expires: time.Now().Add(s.ttl)}
-		switch {
-		case result.StatusCode >= 200 && result.StatusCode < 300:
-			cached.policy, err = ParseRobots(result.Body)
-			if err != nil {
-				return RobotsDecision{}, err
-			}
-		case result.StatusCode == http.StatusUnauthorized || result.StatusCode == http.StatusForbidden:
-			cached.policy, _ = ParseRobots([]byte("User-agent: *\nDisallow: /"))
-		case result.StatusCode == http.StatusNotFound || result.StatusCode == http.StatusGone:
-			// Missing robots files permit crawling.
-		default:
-			return RobotsDecision{}, fmt.Errorf("robots.txt returned retryable status %d", result.StatusCode)
-		}
-		s.mu.Lock()
-		s.cache[key] = cached
-		s.mu.Unlock()
+	cached, err := s.load(ctx, key)
+	if err != nil {
+		return RobotsDecision{}, err
 	}
 	requestPath := target.EscapedPath()
 	if target.RawQuery != "" {
@@ -234,6 +212,48 @@ func (s *RobotsService) Check(ctx context.Context, raw string) (RobotsDecision, 
 	decision := cached.policy.Evaluate(s.agent, requestPath)
 	decision.StatusCode = cached.status
 	return decision, nil
+}
+
+func (s *RobotsService) Sitemaps(ctx context.Context, raw string) ([]string, error) {
+	target, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+	cached, err := s.load(ctx, target.Scheme+"://"+target.Host)
+	if err != nil {
+		return nil, err
+	}
+	return append([]string(nil), cached.policy.Sitemaps...), nil
+}
+
+func (s *RobotsService) load(ctx context.Context, key string) (cachedRobots, error) {
+	s.mu.Lock()
+	cached, exists := s.cache[key]
+	s.mu.Unlock()
+	if !exists || time.Now().After(cached.expires) {
+		result, err := s.fetcher.Fetch(ctx, key+"/robots.txt")
+		if err != nil {
+			return cachedRobots{}, fmt.Errorf("fetch robots.txt: %w", err)
+		}
+		cached = cachedRobots{status: result.StatusCode, expires: time.Now().Add(s.ttl)}
+		switch {
+		case result.StatusCode >= 200 && result.StatusCode < 300:
+			cached.policy, err = ParseRobots(result.Body)
+			if err != nil {
+				return cachedRobots{}, err
+			}
+		case result.StatusCode == http.StatusUnauthorized || result.StatusCode == http.StatusForbidden:
+			cached.policy, _ = ParseRobots([]byte("User-agent: *\nDisallow: /"))
+		case result.StatusCode == http.StatusNotFound || result.StatusCode == http.StatusGone:
+			// Missing robots files permit crawling.
+		default:
+			return cachedRobots{}, fmt.Errorf("robots.txt returned retryable status %d", result.StatusCode)
+		}
+		s.mu.Lock()
+		s.cache[key] = cached
+		s.mu.Unlock()
+	}
+	return cached, nil
 }
 
 type RobotsDeniedError struct{ Decision RobotsDecision }

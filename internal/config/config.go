@@ -3,9 +3,11 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 )
 
 const directoryMode = 0o700
@@ -14,6 +16,31 @@ type Paths struct {
 	Data      string
 	Cache     string
 	Artifacts string
+}
+
+type Server struct {
+	Host string
+	Port int
+}
+
+func ResolveServer() (Server, error) {
+	host := os.Getenv("SEO_AUDITOR_BIND_HOST")
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	address := net.ParseIP(host)
+	if address == nil || !address.IsLoopback() {
+		return Server{}, errors.New("API bind host must be a numeric loopback address")
+	}
+	port := 7331
+	if raw := os.Getenv("SEO_AUDITOR_BIND_PORT"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 65535 {
+			return Server{}, errors.New("API bind port is invalid")
+		}
+		port = value
+	}
+	return Server{Host: host, Port: port}, nil
 }
 
 // ResolvePaths returns application-owned directories. Environment overrides
