@@ -58,6 +58,9 @@ func validateConfiguration(configuration contracts.CrawlConfiguration) (contract
 	if configuration.RenderingMode != "raw" && configuration.RenderingMode != "rendered" {
 		return configuration, errors.New("rendering mode must be raw or rendered")
 	}
+	if distance := configuration.EffectiveNearDuplicateDistance(); distance < 0 || distance > 3 {
+		return configuration, errors.New("near-duplicate distance must be between 0 and 3")
+	}
 	if err := configuration.Limits.Validate(); err != nil {
 		return configuration, err
 	}

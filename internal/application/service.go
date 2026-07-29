@@ -336,7 +336,7 @@ func (s *Service) run(ctx context.Context, prepared preparedCrawl) error {
 		Renderer: prepared.renderer,
 	}
 	return engine.Run(ctx, crawler.RunRequest{
-		CrawlID: prepared.result.CrawlID, ProjectID: prepared.result.ProjectID, Limits: prepared.config.Limits, WorkerID: "local", RenderingMode: prepared.config.RenderingMode,
+		CrawlID: prepared.result.CrawlID, ProjectID: prepared.result.ProjectID, Limits: prepared.config.Limits, WorkerID: "local", RenderingMode: prepared.config.RenderingMode, NearDuplicateDistance: prepared.config.EffectiveNearDuplicateDistance(),
 	})
 }
 

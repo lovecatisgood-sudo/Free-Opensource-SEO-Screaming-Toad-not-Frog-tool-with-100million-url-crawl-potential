@@ -39,11 +39,12 @@ type Engine struct {
 }
 
 type RunRequest struct {
-	CrawlID       contracts.ID
-	ProjectID     contracts.ID
-	Limits        contracts.CrawlLimits
-	WorkerID      string
-	RenderingMode string
+	CrawlID               contracts.ID
+	ProjectID             contracts.ID
+	Limits                contracts.CrawlLimits
+	WorkerID              string
+	RenderingMode         string
+	NearDuplicateDistance int
 }
 
 type workResult struct {
@@ -70,6 +71,9 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 	}
 	if request.RenderingMode == "rendered" && e.Renderer == nil {
 		return errors.New("rendered mode requires a renderer")
+	}
+	if request.NearDuplicateDistance < 0 || request.NearDuplicateDistance > 3 {
+		return errors.New("near-duplicate distance must be between 0 and 3")
 	}
 	leaseTime := e.LeaseTime
 	if leaseTime <= 0 {
@@ -121,7 +125,7 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 		}
 		if len(leases) == 0 {
 			if progress.Queued == 0 {
-				if err := e.Frontier.FinalizeAudit(runCtx, request.CrawlID, rules.DefaultThresholds().DeepPageDepth); err != nil {
+				if err := e.Frontier.FinalizeAudit(runCtx, request.CrawlID, rules.DefaultThresholds().DeepPageDepth, request.NearDuplicateDistance); err != nil {
 					return err
 				}
 				return e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlRunning}, contracts.CrawlCompleted, "")

@@ -11,8 +11,8 @@ import (
 
 // FinalizeAudit evaluates rules that require a complete crawl graph. It is
 // idempotent so interrupted finalization can be retried safely.
-func (f *Frontier) FinalizeAudit(ctx context.Context, crawlID contracts.ID, deepPageDepth int) error {
-	if crawlID == "" || deepPageDepth < 0 {
+func (f *Frontier) FinalizeAudit(ctx context.Context, crawlID contracts.ID, deepPageDepth, nearDuplicateDistance int) error {
+	if crawlID == "" || deepPageDepth < 0 || nearDuplicateDistance < 0 || nearDuplicateDistance > 3 {
 		return errors.New("crawl ID and non-negative depth threshold are required")
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -104,6 +104,11 @@ WHERE cu.crawl_id=? AND l.link_kind='internal' AND (' '||lower(replace(l.rel,','
 		}
 		for _, statement := range statements {
 			if _, err := tx.ExecContext(ctx, statement.query, statement.args...); err != nil {
+				return err
+			}
+		}
+		if nearDuplicateDistance > 0 {
+			if err := insertNearDuplicateIssues(ctx, tx, string(crawlID), nearDuplicateDistance, now); err != nil {
 				return err
 			}
 		}

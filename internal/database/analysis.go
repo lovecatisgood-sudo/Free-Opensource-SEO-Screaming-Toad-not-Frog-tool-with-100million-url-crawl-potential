@@ -24,15 +24,23 @@ func (f *Frontier) SaveAnalysis(ctx context.Context, crawlID, projectID contract
 			}
 		}
 		social, _ := json.Marshal(page.Social)
-		result, err := tx.ExecContext(ctx, `INSERT INTO page(crawl_url_id, extraction_mode, title, meta_description, canonical_url, robots_directives, language, text_length, content_hash, extracted_at, viewport, html_hash, x_robots_tag, social_json)
-            VALUES (?, 'raw', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, lease.CrawlURLID, page.Title, page.MetaDescription, canonical,
-			page.MetaRobots, page.Language, len(page.VisibleText), page.ContentHash, now, page.Viewport, page.HTMLHash, page.XRobotsTag, string(social))
+		result, err := tx.ExecContext(ctx, `INSERT INTO page(crawl_url_id, extraction_mode, title, meta_description, canonical_url, robots_directives, language, text_length, content_hash, similarity_hash, extracted_at, viewport, html_hash, x_robots_tag, social_json)
+			VALUES (?, 'raw', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, lease.CrawlURLID, page.Title, page.MetaDescription, canonical,
+			page.MetaRobots, page.Language, len(page.VisibleText), page.ContentHash, page.SimilarityHash, now, page.Viewport, page.HTMLHash, page.XRobotsTag, string(social))
 		if err != nil {
 			return err
 		}
 		pageID, err := result.LastInsertId()
 		if err != nil {
 			return err
+		}
+		if len(page.SimilarityHash) == 16 {
+			for band := 0; band < 4; band++ {
+				value := page.SimilarityHash[band*4 : band*4+4]
+				if _, err := tx.ExecContext(ctx, "INSERT INTO page_similarity_band(page_id,band,value) VALUES (?,?,?)", pageID, band, value); err != nil {
+					return err
+				}
+			}
 		}
 		for position, heading := range page.Headings {
 			if _, err := tx.ExecContext(ctx, "INSERT INTO heading(page_id, position, level, text) VALUES (?, ?, ?, ?)", pageID, position, heading.Level, heading.Text); err != nil {

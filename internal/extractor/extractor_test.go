@@ -1,7 +1,9 @@
 package extractor
 
 import (
+	"math/bits"
 	"net/http"
+	"strconv"
 	"testing"
 )
 
@@ -21,12 +23,31 @@ func TestExtractTechnicalSEOFields(t *testing.T) {
 	if len(page.Headings) != 2 || len(page.Links) != 1 || page.Links[0].URL != "https://example.com/docs/page-2" {
 		t.Fatalf("content extraction: %+v", page)
 	}
-	if len(page.Images) != 1 || !page.Images[0].AltPresent || page.ContentHash == "" || page.WordCount == 0 {
+	if len(page.Images) != 1 || !page.Images[0].AltPresent || page.ContentHash == "" || page.SimilarityHash == "" || page.WordCount == 0 {
 		t.Fatalf("image/text: %+v", page)
 	}
 	if len(page.StructuredData) != 3 || !page.StructuredData[0].Valid || page.StructuredData[0].Types[0] != "Article" {
 		t.Fatalf("structured data: %+v", page.StructuredData)
 	}
+}
+
+func TestSimilarityHashIsDeterministicAndLocal(t *testing.T) {
+	t.Parallel()
+	base := similarityHash("one two three four five six seven eight")
+	close := similarityHash("one two three four five six seven nine")
+	far := similarityHash("completely unrelated vocabulary about another subject")
+	if base == "" || base != similarityHash("one two three four five six seven eight") {
+		t.Fatal("similarity hash is empty or non-deterministic")
+	}
+	if hammingHex(base, close) >= hammingHex(base, far) {
+		t.Fatalf("near text should be closer: close=%d far=%d", hammingHex(base, close), hammingHex(base, far))
+	}
+}
+
+func hammingHex(left, right string) int {
+	leftValue, _ := strconv.ParseUint(left, 16, 64)
+	rightValue, _ := strconv.ParseUint(right, 16, 64)
+	return bits.OnesCount64(leftValue ^ rightValue)
 }
 
 func TestExtractReportsInvalidJSONLD(t *testing.T) {

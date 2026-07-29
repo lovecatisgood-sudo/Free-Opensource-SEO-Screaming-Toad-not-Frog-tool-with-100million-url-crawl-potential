@@ -3,6 +3,7 @@ package extractor
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -59,7 +60,7 @@ type Page struct {
 	Language, Viewport, PaginationNext, PaginationPrevious string
 	VisibleText                                            string
 	WordCount                                              int
-	HTMLHash, ContentHash                                  string
+	HTMLHash, ContentHash, SimilarityHash                  string
 }
 
 func Extract(documentURL string, headers http.Header, body []byte) (Page, error) {
@@ -179,7 +180,41 @@ func Extract(documentURL string, headers http.Header, body []byte) (Page, error)
 	htmlHash, contentHash := sha256.Sum256(body), sha256.Sum256([]byte(page.VisibleText))
 	page.HTMLHash = hex.EncodeToString(htmlHash[:])
 	page.ContentHash = hex.EncodeToString(contentHash[:])
+	page.SimilarityHash = similarityHash(page.VisibleText)
 	return page, nil
+}
+
+// similarityHash returns a deterministic 64-bit SimHash over normalized
+// three-word shingles. It is compact enough to retain for large crawls without
+// storing page bodies, while exact content continues to use SHA-256.
+func similarityHash(text string) string {
+	words := strings.Fields(strings.ToLower(text))
+	if len(words) == 0 {
+		return ""
+	}
+	var weights [64]int
+	width := 3
+	if len(words) < width {
+		width = len(words)
+	}
+	for index := 0; index+width <= len(words); index++ {
+		digest := sha256.Sum256([]byte(strings.Join(words[index:index+width], "\x00")))
+		value := binary.BigEndian.Uint64(digest[:8])
+		for bit := 0; bit < 64; bit++ {
+			if value&(uint64(1)<<bit) != 0 {
+				weights[bit]++
+			} else {
+				weights[bit]--
+			}
+		}
+	}
+	var value uint64
+	for bit, weight := range weights {
+		if weight >= 0 {
+			value |= uint64(1) << bit
+		}
+	}
+	return fmt.Sprintf("%016x", value)
 }
 
 func walk(node *html.Node, hidden bool, visit func(*html.Node, bool)) {

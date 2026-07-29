@@ -72,11 +72,11 @@ func TestFinalizeAuditComputesGraphRulesAndIsIdempotent(t *testing.T) {
 			}
 		}
 	}
-	if err := frontier.FinalizeAudit(ctx, crawlID, 4); err != nil {
+	if err := frontier.FinalizeAudit(ctx, crawlID, 4, 3); err != nil {
 		t.Fatal(err)
 	}
 	assertCounts()
-	if err := frontier.FinalizeAudit(ctx, crawlID, 4); err != nil {
+	if err := frontier.FinalizeAudit(ctx, crawlID, 4, 3); err != nil {
 		t.Fatal(err)
 	}
 	assertCounts()
@@ -135,7 +135,7 @@ func TestFinalizeAuditValidatesCanonicalHreflangAndSitemapGraphs(t *testing.T) {
 	if _, err := frontier.db.ExecContext(ctx, `INSERT INTO sitemap_entry(sitemap_id,url_id) VALUES ((SELECT id FROM sitemap WHERE crawl_id=?),?)`, crawlID, records[1].urlID); err != nil {
 		t.Fatal(err)
 	}
-	if err := frontier.FinalizeAudit(ctx, crawlID, 4); err != nil {
+	if err := frontier.FinalizeAudit(ctx, crawlID, 4, 3); err != nil {
 		t.Fatal(err)
 	}
 	for rule, minimum := range map[string]int{"AUD-04": 1, "AUD-06": 1, "AUD-09": 1} {
@@ -146,5 +146,78 @@ func TestFinalizeAuditValidatesCanonicalHreflangAndSitemapGraphs(t *testing.T) {
 		if count < minimum {
 			t.Fatalf("%s count=%d want at least %d", rule, count, minimum)
 		}
+	}
+}
+
+func TestFinalizeAuditDetectsConfiguredNearDuplicates(t *testing.T) {
+	t.Parallel()
+	frontier, projectID, crawlID := testFrontier(t)
+	ctx := context.Background()
+	second, err := fetchpolicy.NormalizeURL("https://example.com/near")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := frontier.Enqueue(ctx, Discovery{CrawlID: crawlID, ProjectID: projectID, URL: second, Depth: 1, DiscoveryKind: "link", MaximumURLs: 100}); err != nil {
+		t.Fatal(err)
+	}
+	third, err := fetchpolicy.NormalizeURL("https://example.com/near-copy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := frontier.Enqueue(ctx, Discovery{CrawlID: crawlID, ProjectID: projectID, URL: third, Depth: 1, DiscoveryKind: "link", MaximumURLs: 100}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := frontier.db.QueryContext(ctx, `SELECT cu.id,u.request_key FROM crawl_url cu JOIN url u ON u.id=cu.url_id WHERE cu.crawl_id=? ORDER BY cu.id`, crawlID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	type pageSeed struct {
+		crawlURLID int64
+		pageURL    string
+	}
+	var seeds []pageSeed
+	for rows.Next() {
+		var item pageSeed
+		if err := rows.Scan(&item.crawlURLID, &item.pageURL); err != nil {
+			t.Fatal(err)
+		}
+		seeds = append(seeds, item)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if len(seeds) != 2 {
+		t.Fatalf("page seed count=%d", len(seeds))
+	}
+	values := []string{"0000000000000000", "0000000000000003"}
+	for index, item := range seeds {
+		if _, err := frontier.db.ExecContext(ctx, `UPDATE crawl_url SET state='analysed',attempt_count=1 WHERE id=?`, item.crawlURLID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := frontier.db.ExecContext(ctx, `INSERT INTO fetch_attempt(crawl_url_id,attempt,started_at,finished_at,status_code,content_type) VALUES (?,1,'2026-01-01T00:00:00Z','2026-01-01T00:00:01Z',200,'text/html')`, item.crawlURLID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := frontier.db.ExecContext(ctx, `INSERT INTO page(crawl_url_id,extraction_mode,title,text_length,content_hash,similarity_hash,extracted_at,social_json) VALUES (?,'raw',?,100,?,?,'2026-01-01T00:00:01Z','{}')`, item.crawlURLID, item.pageURL, item.pageURL, values[index]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := frontier.FinalizeAudit(ctx, crawlID, 4, 2); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := frontier.db.QueryRowContext(ctx, `SELECT count(*) FROM issue WHERE crawl_id=? AND rule_id='AUD-08' AND json_extract(evidence_json,'$.hamming_distance')=2`, crawlID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		rows, _ := frontier.db.QueryContext(ctx, `SELECT rule_id,evidence_json FROM issue WHERE crawl_id=? AND rule_id='AUD-08'`, crawlID)
+		defer rows.Close()
+		var evidence []string
+		for rows.Next() {
+			var rule, item string
+			_ = rows.Scan(&rule, &item)
+			evidence = append(evidence, item)
+		}
+		t.Fatalf("near duplicate count=%d evidence=%v", count, evidence)
 	}
 }
