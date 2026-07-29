@@ -2,7 +2,7 @@
 
 SEO Auditor is a local-first, open-source technical SEO crawler focused on safe network behaviour, durable recovery and evidence-backed audits. The crawler core is Go; the browser interface and isolated optional renderer use TypeScript.
 
-The project is under active development and does not yet have a supported public release. The current supported development baseline is documented in [the planning index](./docs/README.md).
+The v2.0 implementation is being release-qualified. Raw crawling, rendered-page evidence, local UI/API/CLI/MCP workflows, recovery, reports, lifecycle diagnostics, and the 100,000-URL single-crawl gate are implemented. A 100M+ campaign claim remains explicitly unverified until the separate distributed-scale evidence gate passes.
 
 ## Development
 
@@ -33,7 +33,7 @@ Implemented foundation controls include:
 - MCP over stdio using the official Go SDK;
 - strict TypeScript renderer framing with an 8 MiB frame ceiling.
 
-These are foundation components, not a claim that the crawler is release-ready. Do not use development builds against systems you are not authorized to audit.
+These controls are verified by automated tests, but no crawler can make arbitrary targets risk-free. Start with conservative limits and only audit systems you are authorized to access. See the [security model](./docs/SECURITY_MODEL.md) and [operations guide](./docs/OPERATIONS.md).
 
 ## Third-party reference boundary
 
@@ -41,4 +41,4 @@ The local `open-seo-crawler/` checkout is untrusted reference material. It is ig
 
 ## License
 
-A product license will be selected before the first public release. Third-party dependency and source notices are tracked in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+SEO Auditor is available under the [MIT License](./LICENSE). Third-party dependency and source notices are tracked in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

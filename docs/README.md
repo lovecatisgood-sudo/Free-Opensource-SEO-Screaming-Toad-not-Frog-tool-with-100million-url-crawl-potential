@@ -10,6 +10,9 @@ This directory is the approved planning source of truth for the secure, local-fi
 4. [SEonaut reference review](./references/SEONAUT_REVIEW.md) — reusable ideas and explicit non-reuse boundaries from the Go crawler.
 5. [ADR-001: Go core](./adr/ADR-001-go-core.md) — accepted language and runtime decision.
 6. [100M scale strategy](./SCALE_STRATEGY.md) — staged path to verified 100-million-URL crawl campaigns without reducing audit quality.
+7. [Operations guide](./OPERATIONS.md) — installation, CLI/MCP use, updates, storage, backup and troubleshooting.
+8. [Security model](./SECURITY_MODEL.md) — trust boundaries, controls and residual risks.
+9. [Audit rule catalog](./RULE_CATALOG.md) — versioned rule coverage and limitations.
 
 ## Document precedence
 

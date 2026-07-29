@@ -161,6 +161,8 @@ func runAPICommand(ctx context.Context, command string, arguments []string) (any
 		return result, err
 	case "crawl-status":
 		return getByCrawl(ctx, client, command, arguments, "status")
+	case "crawl-timeline":
+		return getByCrawl(ctx, client, command, arguments, "timeline?limit=100")
 	case "audit-summary":
 		return getByCrawl(ctx, client, command, arguments, "summary")
 	case "issue-list":
@@ -236,6 +238,14 @@ func runAPICommand(ctx context.Context, command string, arguments []string) (any
 		var result application.Artifact
 		err = client.Call(ctx, http.MethodGet, "/api/v1/artifacts/"+url.PathEscape(artifact), nil, &result)
 		return result, err
+	case "diagnostic-create":
+		crawl, err := requiredFlag(command, arguments, "crawl")
+		if err != nil {
+			return nil, err
+		}
+		var result application.Artifact
+		err = client.Call(ctx, http.MethodPost, "/api/v1/crawls/"+url.PathEscape(crawl)+"/diagnostics", nil, &result)
+		return result, err
 	default:
 		usage()
 		return nil, fmt.Errorf("unknown command %q", command)
@@ -292,5 +302,5 @@ func runStandaloneCrawl(ctx context.Context, arguments []string) (application.Cr
 	return service.Crawl(ctx, application.CrawlRequest{ProjectName: *name, SeedURL: *seed, Limits: limits})
 }
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: seo-auditor-cli <version|crawl|project-create|project-list|profile-create|profile-list|scope-preview|crawl-start|crawl-list|crawl-status|crawl-pause|crawl-resume|crawl-cancel|audit-summary|issue-list|issue-explain|page-list|page-get|crawl-compare|report-export|artifact-get> [options]")
+	fmt.Fprintln(os.Stderr, "usage: seo-auditor-cli <version|crawl|project-create|project-list|profile-create|profile-list|scope-preview|crawl-start|crawl-list|crawl-status|crawl-timeline|crawl-pause|crawl-resume|crawl-cancel|audit-summary|issue-list|issue-explain|page-list|page-get|crawl-compare|report-export|diagnostic-create|artifact-get> [options]")
 }

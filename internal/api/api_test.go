@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,32 @@ import (
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
 	"github.com/seo-auditor/seo-auditor/internal/database"
 )
+
+func TestOpenAPIDocumentCoversPublicRoutes(t *testing.T) {
+	t.Parallel()
+	handler, _ := New(&fakeBackend{}, "http://127.0.0.1:7331")
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:7331/api/v1/openapi.json", nil)
+	result := httptest.NewRecorder()
+	handler.ServeHTTP(result, request)
+	if result.Code != http.StatusOK {
+		t.Fatalf("status=%d", result.Code)
+	}
+	var document struct {
+		OpenAPI string                     `json:"openapi"`
+		Paths   map[string]json.RawMessage `json:"paths"`
+	}
+	if err := json.Unmarshal(result.Body.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/openapi.json", "/projects/{projectId}/restore", "/crawls/{crawlId}/timeline", "/crawls/{crawlId}/issues/{issueId}", "/crawls/{crawlId}/diagnostics"} {
+		if _, exists := document.Paths[path]; !exists {
+			t.Errorf("OpenAPI path missing: %s", path)
+		}
+	}
+	if document.OpenAPI != "3.1.0" {
+		t.Fatalf("OpenAPI version=%q", document.OpenAPI)
+	}
+}
 
 type fakeBackend struct{ cancelled bool }
 

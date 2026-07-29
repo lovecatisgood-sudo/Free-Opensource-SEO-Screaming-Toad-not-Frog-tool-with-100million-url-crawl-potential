@@ -7,13 +7,15 @@ import (
 
 var openAPIDocument = map[string]any{
 	"openapi": "3.1.0",
-	"info":    map[string]any{"title": "SEO Auditor local API", "version": "0.1.0", "description": "Loopback-only API. Mutations require the local session cookie, exact Origin, and X-CSRF-Token."},
+	"info":    map[string]any{"title": "SEO Auditor local API", "version": "2.0.0-dev", "description": "Loopback-only API. Mutations require the local session cookie, exact Origin, and X-CSRF-Token."},
 	"servers": []map[string]string{{"url": "http://127.0.0.1:7331/api/v1"}},
 	"paths": map[string]any{
 		"/health":                             map[string]any{"get": operation("Read local service health")},
+		"/openapi.json":                       map[string]any{"get": operation("Read this OpenAPI document")},
 		"/session":                            map[string]any{"post": operation("Bootstrap a local browser session")},
 		"/projects":                           map[string]any{"get": operation("List projects"), "post": operation("Create a local project")},
 		"/projects/{projectId}":               map[string]any{"patch": operation("Rename or archive a project"), "delete": operation("Move a project to trash")},
+		"/projects/{projectId}/restore":       map[string]any{"post": operation("Restore a trashed project")},
 		"/projects/{projectId}/profiles":      map[string]any{"get": operation("List reusable crawl profiles"), "post": operation("Create a reusable crawl profile")},
 		"/projects/{projectId}/scope-preview": map[string]any{"post": operation("Preview normalized scope decisions")},
 		"/projects/{projectId}/crawls":        map[string]any{"post": operation("Start a crawl from a stored profile")},
@@ -25,6 +27,7 @@ var openAPIDocument = map[string]any{
 		"/crawls/{crawlId}/pages":             map[string]any{"get": operation("List pages with bounded keyset pagination")},
 		"/crawls/{crawlId}/pages/{pageId}":    map[string]any{"get": operation("Read page evidence and relationships")},
 		"/crawls/{crawlId}/issues":            map[string]any{"get": operation("List issues with bounded keyset pagination")},
+		"/crawls/{crawlId}/issues/{issueId}":  map[string]any{"get": operation("Explain one issue with rule guidance and evidence")},
 		"/crawls/{crawlId}/links":             map[string]any{"get": operation("List links with bounded keyset pagination")},
 		"/crawls/{crawlId}/pause":             map[string]any{"post": operation("Pause a running crawl")},
 		"/crawls/{crawlId}/resume":            map[string]any{"post": operation("Resume a paused crawl")},
