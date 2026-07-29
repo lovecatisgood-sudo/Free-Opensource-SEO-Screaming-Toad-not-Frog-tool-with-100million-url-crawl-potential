@@ -71,6 +71,27 @@ func TestVerifyAndBackupProduceReadableSnapshot(t *testing.T) {
 	}
 }
 
+func TestOpenReadOnlyDoesNotMigrateOrWrite(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "readonly.db")
+	db, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	readonly, err := OpenReadOnly(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer readonly.Close()
+	if _, err := readonly.SQL().ExecContext(ctx, `INSERT INTO project(id,name,created_at,updated_at) VALUES ('x','x','x','x')`); err == nil {
+		t.Fatal("read-only database accepted a write")
+	}
+}
+
 func TestForeignKeysAreEnforced(t *testing.T) {
 	t.Parallel()
 

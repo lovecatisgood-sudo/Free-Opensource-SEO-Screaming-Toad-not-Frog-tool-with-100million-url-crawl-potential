@@ -47,14 +47,18 @@ func (g *generator) Fetch(_ context.Context, raw string) (fetchpolicy.FetchResul
 
 func main() {
 	if len(os.Args) < 2 {
-		fail(errors.New("usage: seo-auditor-scale <run|status> --database PATH"))
+		fail(errors.New("usage: seo-auditor-scale <run|resume|status> --database PATH"))
 	}
 	if os.Args[1] == "status" {
 		status(os.Args[2:])
 		return
 	}
+	if os.Args[1] == "resume" {
+		resume(os.Args[2:])
+		return
+	}
 	if os.Args[1] != "run" {
-		fail(errors.New("usage: seo-auditor-scale <run|status> --database PATH"))
+		fail(errors.New("usage: seo-auditor-scale <run|resume|status> --database PATH"))
 	}
 	flags := flag.NewFlagSet("run", flag.ExitOnError)
 	urls := flags.Int64("urls", 1_000_000, "unique synthetic URLs")
@@ -115,7 +119,7 @@ func status(arguments []string) {
 	databasePath := flags.String("database", ".data/scale.sqlite3", "benchmark database path")
 	_ = flags.Parse(arguments)
 	ctx := context.Background()
-	db, err := database.Open(ctx, *databasePath)
+	db, err := database.OpenReadOnly(ctx, *databasePath)
 	if err != nil {
 		fail(err)
 	}
@@ -135,6 +139,50 @@ func status(arguments []string) {
 		fail(err)
 	}
 	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"progress": progress, "segments": segments, "storage_bytes": storage})
+}
+
+func resume(arguments []string) {
+	flags := flag.NewFlagSet("resume", flag.ExitOnError)
+	databasePath := flags.String("database", ".data/scale.sqlite3", "benchmark database path")
+	workers := flags.Int("workers", 64, "worker concurrency")
+	_ = flags.Parse(arguments)
+	ctx := context.Background()
+	db, err := database.Open(ctx, *databasePath)
+	if err != nil {
+		fail(err)
+	}
+	defer db.Close()
+	frontier := database.NewFrontier(db, 4096)
+	defer frontier.Close()
+	if err := frontier.RecoverInterruptedCrawls(ctx); err != nil {
+		fail(err)
+	}
+	stored, err := frontier.LoadCrawl(ctx, contracts.ID("crawl_scale"))
+	if err != nil {
+		fail(err)
+	}
+	stored.Configuration.Limits.GlobalConcurrency = *workers
+	stored.Configuration.Limits.PerHostConcurrency = *workers
+	scope, err := fetchpolicy.CompileScope(fetchpolicy.ScopeConfig{AllowedHosts: stored.Configuration.AllowedHosts})
+	if err != nil {
+		fail(err)
+	}
+	fixture := &generator{total: stored.Configuration.Limits.MaximumURLs, fanout: 10}
+	started := time.Now()
+	engine := crawler.Engine{Frontier: frontier, Fetcher: fixture, Scope: scope, LeaseTime: 2 * time.Minute, MaxLinksPerPage: 20}
+	request := crawler.RunRequest{CrawlID: stored.CrawlID, ProjectID: stored.ProjectID, Limits: stored.Configuration.Limits, WorkerID: "synthetic-scale-resume", SegmentSize: stored.Configuration.EffectiveSegmentSize(), NearDuplicateDistance: stored.Configuration.EffectiveNearDuplicateDistance()}
+	if err := engine.Run(ctx, request); err != nil {
+		fail(err)
+	}
+	verification, err := frontier.VerifyCampaign(ctx, stored.CrawlID)
+	if err != nil {
+		fail(err)
+	}
+	result := map[string]any{"transport": "synthetic_in_process_not_live_guarded_fetch", "resumed_after_interruption": true, "fetch_calls_after_resume": fixture.calls.Load(), "elapsed_seconds_after_resume": time.Since(started).Seconds(), "verification": verification}
+	_ = json.NewEncoder(os.Stdout).Encode(result)
+	if err := verification.Error(); err != nil {
+		os.Exit(1)
+	}
 }
 
 func fail(err error) {

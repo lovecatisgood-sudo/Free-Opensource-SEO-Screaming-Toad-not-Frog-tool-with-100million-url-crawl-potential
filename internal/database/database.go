@@ -52,6 +52,30 @@ func Open(ctx context.Context, path string) (*DB, error) {
 	return db, nil
 }
 
+// OpenReadOnly opens an existing database without running migrations. It is
+// intended for diagnostics against an active campaign and cannot contend for a
+// schema write lock.
+func OpenReadOnly(ctx context.Context, path string) (*DB, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("database path: %w", err)
+	}
+	dsn := (&url.URL{Scheme: "file", Path: filepath.ToSlash(abs), RawQuery: url.Values{
+		"mode":    []string{"ro"},
+		"_pragma": []string{"busy_timeout(5000)", "foreign_keys(1)"},
+	}.Encode()}).String()
+	sqldb, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open read-only sqlite: %w", err)
+	}
+	sqldb.SetMaxOpenConns(2)
+	if err := sqldb.PingContext(ctx); err != nil {
+		_ = sqldb.Close()
+		return nil, fmt.Errorf("ping read-only sqlite: %w", err)
+	}
+	return &DB{sql: sqldb, path: abs}, nil
+}
+
 func (db *DB) Close() error { return db.sql.Close() }
 
 func (db *DB) SQL() *sql.DB { return db.sql }
