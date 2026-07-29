@@ -183,6 +183,19 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 		}
 		wait.Wait()
 		close(results)
+		if request.RenderingMode == "raw" {
+			batch := make([]workResult, 0, len(leases))
+			for result := range results {
+				batch = append(batch, result)
+			}
+			if err := e.commitRawBatch(runCtx, request, batch, maxLinks); err != nil {
+				if errors.Is(err, database.ErrURLLimitReached) {
+					_ = e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlRunning}, contracts.CrawlLimited, "url_limit")
+				}
+				return err
+			}
+			continue
+		}
 		for result := range results {
 			if err := e.commitResult(runCtx, request, result, maxLinks); err != nil {
 				if errors.Is(err, database.ErrURLLimitReached) {
@@ -192,6 +205,75 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 			}
 		}
 	}
+}
+
+func (e *Engine) commitRawBatch(ctx context.Context, request RunRequest, results []workResult, maxLinks int) error {
+	commits := make([]database.AnalysisCommit, 0, len(results))
+	discoveries := make([]database.Discovery, 0, len(results)*8)
+	for _, result := range results {
+		if result.err != nil {
+			var denied *RobotsDeniedError
+			if errors.As(result.err, &denied) {
+				if err := e.Frontier.Skip(ctx, request.CrawlID, result.lease, "robots_disallowed"); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := e.failOrRetry(ctx, request.CrawlID, result.lease, 0, nil, result.err); err != nil {
+				return err
+			}
+			continue
+		}
+		retry := fetchpolicy.ClassifyRetry(result.fetch.StatusCode, result.fetch.Header, nil, time.Now())
+		if retry.Retry {
+			if err := e.failOrRetry(ctx, request.CrawlID, result.lease, result.fetch.StatusCode, &retry, nil); err != nil {
+				return err
+			}
+			continue
+		}
+		completion := database.FetchCompletion{Lease: result.lease, StatusCode: result.fetch.StatusCode, ContentType: result.fetch.ContentType, CompressedBytes: result.fetch.CompressedBytes, DecodedBytes: result.fetch.DecodedBytes, StartedAt: result.fetch.StartedAt, FinishedAt: result.fetch.FinishedAt, Redirects: result.fetch.Redirects}
+		if !isHTML(result.fetch.ContentType) {
+			if err := e.Frontier.CompleteFetch(ctx, request.CrawlID, completion); err != nil {
+				return err
+			}
+			continue
+		}
+		page, err := extractor.Extract(result.fetch.FinalURL, result.fetch.Header, result.fetch.Body)
+		if err != nil {
+			if err := e.Frontier.CompleteFetch(ctx, request.CrawlID, completion); err != nil {
+				return err
+			}
+			continue
+		}
+		issues := rules.EvaluatePage(rules.PageInput{Page: page, StatusCode: result.fetch.StatusCode, Headers: result.fetch.Header, Depth: result.lease.Depth}, rules.DefaultThresholds())
+		commits = append(commits, database.AnalysisCommit{Fetch: completion, ProjectID: request.ProjectID, Page: page, Issues: issues})
+		if result.lease.Depth >= request.Limits.MaximumDepth {
+			continue
+		}
+		parent := result.lease.CrawlURLID
+		for index, link := range page.Links {
+			if index >= maxLinks {
+				break
+			}
+			normalized, err := fetchpolicy.NormalizeURL(link.URL)
+			if err != nil || e.Scope.Evaluate(normalized) != nil || DetectTrap(normalized) != "" {
+				continue
+			}
+			discoveries = append(discoveries, database.Discovery{CrawlID: request.CrawlID, ProjectID: request.ProjectID, URL: normalized, Depth: result.lease.Depth + 1, DiscoveryKind: "link", DiscoveredFrom: &parent, MaximumURLs: request.Limits.MaximumURLs})
+		}
+		for _, image := range page.Images {
+			normalized, err := fetchpolicy.NormalizeURL(image.URL)
+			if err != nil || e.Scope.Evaluate(normalized) != nil {
+				continue
+			}
+			discoveries = append(discoveries, database.Discovery{CrawlID: request.CrawlID, ProjectID: request.ProjectID, URL: normalized, Depth: result.lease.Depth + 1, DiscoveryKind: "image", DiscoveredFrom: &parent, MaximumURLs: request.Limits.MaximumURLs})
+		}
+	}
+	if err := e.Frontier.CommitAnalyses(ctx, request.CrawlID, commits); err != nil {
+		return err
+	}
+	_, err := e.Frontier.EnqueueBatch(ctx, discoveries)
+	return err
 }
 
 type hostState struct {

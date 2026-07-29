@@ -272,35 +272,39 @@ type FetchCompletion struct {
 }
 
 func (f *Frontier) CompleteFetch(ctx context.Context, crawlID contracts.ID, completion FetchCompletion) error {
-	now := completion.FinishedAt.UTC().Format(time.RFC3339Nano)
 	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		result, err := tx.ExecContext(ctx, `UPDATE crawl_url SET state = 'fetched', robots_decision = COALESCE(robots_decision, 'allowed'), lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
-            WHERE id = ? AND state = 'leased'`, now, completion.Lease.CrawlURLID)
-		if err != nil {
-			return err
-		}
-		if rows, _ := result.RowsAffected(); rows != 1 {
-			return errors.New("crawl URL is not actively leased")
-		}
-		attemptResult, err := tx.ExecContext(ctx, `INSERT INTO fetch_attempt(crawl_url_id, attempt, started_at, finished_at, resolved_ip, status_code, content_type, compressed_bytes, decoded_bytes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, completion.Lease.CrawlURLID, completion.Lease.Attempt,
-			completion.StartedAt.UTC().Format(time.RFC3339Nano), now, completion.ResolvedIP, completion.StatusCode,
-			completion.ContentType, completion.CompressedBytes, completion.DecodedBytes)
-		if err != nil {
-			return err
-		}
-		attemptID, err := attemptResult.LastInsertId()
-		if err != nil {
-			return err
-		}
-		for _, hop := range completion.Redirects {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO redirect_hop(fetch_attempt_id, hop, source_url, status_code, target_url, policy_decision) VALUES (?, ?, ?, ?, ?, 'allowed')`, attemptID, hop.Hop, hop.SourceURL, hop.StatusCode, hop.TargetURL); err != nil {
-				return err
-			}
-		}
-		_, err = tx.ExecContext(ctx, "UPDATE crawl SET fetched_count = fetched_count + 1, updated_at = ? WHERE id = ?", now, crawlID)
-		return err
+		return completeFetchTx(ctx, tx, crawlID, completion)
 	})
+}
+
+func completeFetchTx(ctx context.Context, tx *sql.Tx, crawlID contracts.ID, completion FetchCompletion) error {
+	now := completion.FinishedAt.UTC().Format(time.RFC3339Nano)
+	result, err := tx.ExecContext(ctx, `UPDATE crawl_url SET state = 'fetched', robots_decision = COALESCE(robots_decision, 'allowed'), lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
+            WHERE id = ? AND state = 'leased'`, now, completion.Lease.CrawlURLID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := result.RowsAffected(); rows != 1 {
+		return errors.New("crawl URL is not actively leased")
+	}
+	attemptResult, err := tx.ExecContext(ctx, `INSERT INTO fetch_attempt(crawl_url_id, attempt, started_at, finished_at, resolved_ip, status_code, content_type, compressed_bytes, decoded_bytes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, completion.Lease.CrawlURLID, completion.Lease.Attempt,
+		completion.StartedAt.UTC().Format(time.RFC3339Nano), now, completion.ResolvedIP, completion.StatusCode,
+		completion.ContentType, completion.CompressedBytes, completion.DecodedBytes)
+	if err != nil {
+		return err
+	}
+	attemptID, err := attemptResult.LastInsertId()
+	if err != nil {
+		return err
+	}
+	for _, hop := range completion.Redirects {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO redirect_hop(fetch_attempt_id, hop, source_url, status_code, target_url, policy_decision) VALUES (?, ?, ?, ?, ?, 'allowed')`, attemptID, hop.Hop, hop.SourceURL, hop.StatusCode, hop.TargetURL); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, "UPDATE crawl SET fetched_count = fetched_count + 1, updated_at = ? WHERE id = ?", now, crawlID)
+	return err
 }
 
 func (f *Frontier) Fail(ctx context.Context, crawlID contracts.ID, lease Lease, code, detail string, retryAt *time.Time) error {

@@ -14,106 +14,139 @@ import (
 )
 
 func (f *Frontier) SaveAnalysis(ctx context.Context, crawlID, projectID contracts.ID, lease Lease, page extractor.Page, issues []rules.Issue) error {
-	now := time.Now().UTC().Format(time.RFC3339Nano)
 	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		var canonical any
-		if len(page.Canonicals) > 0 {
-			canonical = page.Canonicals[0]
-			if normalized, err := fetchpolicy.NormalizeURL(page.Canonicals[0]); err == nil {
-				canonical = normalized.RequestKey
-			}
-		}
-		social, _ := json.Marshal(page.Social)
-		result, err := tx.ExecContext(ctx, `INSERT INTO page(crawl_url_id, extraction_mode, title, meta_description, canonical_url, robots_directives, language, text_length, content_hash, similarity_hash, extracted_at, viewport, html_hash, x_robots_tag, social_json)
-			VALUES (?, 'raw', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, lease.CrawlURLID, page.Title, page.MetaDescription, canonical,
-			page.MetaRobots, page.Language, len(page.VisibleText), page.ContentHash, page.SimilarityHash, now, page.Viewport, page.HTMLHash, page.XRobotsTag, string(social))
-		if err != nil {
-			return err
-		}
-		pageID, err := result.LastInsertId()
-		if err != nil {
-			return err
-		}
-		if len(page.SimilarityHash) == 16 {
-			for band := 0; band < 4; band++ {
-				value := page.SimilarityHash[band*4 : band*4+4]
-				if _, err := tx.ExecContext(ctx, "INSERT INTO page_similarity_band(page_id,band,value) VALUES (?,?,?)", pageID, band, value); err != nil {
-					return err
-				}
-			}
-		}
-		for position, heading := range page.Headings {
-			if _, err := tx.ExecContext(ctx, "INSERT INTO heading(page_id, position, level, text) VALUES (?, ?, ?, ?)", pageID, position, heading.Level, heading.Text); err != nil {
-				return err
-			}
-		}
-		for _, link := range page.Links {
-			targetID, err := ensureURL(ctx, tx, projectID, link.URL, now)
-			if err != nil {
-				continue
-			}
-			kind := "external"
-			if target, parseErr := fetchpolicy.NormalizeURL(link.URL); parseErr == nil && target.URL.Hostname() == mustHost(page.URL) {
-				kind = "internal"
-			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO link(crawl_id, source_url_id, target_url_id, raw_target, anchor_text, rel, link_kind, extraction_mode)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 'raw')`, crawlID, lease.URLID, targetID, link.RawURL, link.Text, link.Rel, kind); err != nil {
-				return err
-			}
-		}
-		for position, image := range page.Images {
-			normalized, err := fetchpolicy.NormalizeURL(image.URL)
-			if err != nil {
-				continue
-			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO image(project_id, request_key, original_url, declared_width, declared_height) VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(project_id, request_key) DO UPDATE SET declared_width = excluded.declared_width, declared_height = excluded.declared_height`, projectID, normalized.RequestKey, image.URL, image.Width, image.Height); err != nil {
-				return err
-			}
-			var imageID int64
-			if err := tx.QueryRowContext(ctx, "SELECT id FROM image WHERE project_id = ? AND request_key = ?", projectID, normalized.RequestKey).Scan(&imageID); err != nil {
-				return err
-			}
-			var alt any
-			if image.AltPresent {
-				alt = image.Alt
-			}
-			if _, err := tx.ExecContext(ctx, "INSERT INTO page_image(page_id, image_id, position, alt_text) VALUES (?, ?, ?, ?)", pageID, imageID, position, alt); err != nil {
-				return err
-			}
-		}
-		for _, item := range page.Hreflangs {
-			if _, err := tx.ExecContext(ctx, "INSERT INTO hreflang(page_id, language_code, target_url, validation_state) VALUES (?, ?, ?, 'page_only')", pageID, item.Language, item.URL); err != nil {
-				return err
-			}
-		}
-		for _, item := range page.StructuredData {
-			evidence, _ := json.Marshal(item)
-			types, _ := json.Marshal(item.Types)
-			if _, err := tx.ExecContext(ctx, "INSERT INTO structured_data(page_id, format, type_summary, evidence_json) VALUES (?, ?, ?, ?)", pageID, item.Format, string(types), string(evidence)); err != nil {
-				return err
-			}
-		}
-		for _, issue := range issues {
-			if issue.Evidence == nil {
-				issue.Evidence = map[string]any{}
-			}
-			issue.Evidence["extraction_mode"] = "raw"
-			evidence, _ := json.Marshal(issue.Evidence)
-			if _, err := tx.ExecContext(ctx, `INSERT INTO issue(crawl_id, rule_id, rule_version, subject_type, subject_id, severity, evidence_json, created_at) VALUES (?, ?, ?, 'page', ?, ?, ?, ?)`, crawlID, issue.RuleID, issue.RuleVersion, fmt.Sprint(pageID), issue.Severity, string(evidence), now); err != nil {
-				return err
-			}
-		}
-		updated, err := tx.ExecContext(ctx, "UPDATE crawl_url SET state = 'analysed', updated_at = ? WHERE id = ? AND state = 'fetched'", now, lease.CrawlURLID)
-		if err != nil {
-			return err
-		}
-		if rows, _ := updated.RowsAffected(); rows != 1 {
-			return fmt.Errorf("crawl URL is not fetched")
-		}
-		_, err = tx.ExecContext(ctx, "UPDATE crawl SET analysed_count = analysed_count + 1, updated_at = ? WHERE id = ?", now, crawlID)
-		return err
+		return saveAnalysisTx(ctx, tx, crawlID, projectID, lease, page, issues)
 	})
+}
+
+type AnalysisCommit struct {
+	Fetch     FetchCompletion
+	ProjectID contracts.ID
+	Page      extractor.Page
+	Issues    []rules.Issue
+}
+
+// CommitAnalyses atomically persists a bounded fetched/analysed worker batch,
+// amortising WAL transaction overhead without weakening per-URL state guards.
+func (f *Frontier) CommitAnalyses(ctx context.Context, crawlID contracts.ID, commits []AnalysisCommit) error {
+	if len(commits) == 0 {
+		return nil
+	}
+	if len(commits) > 1000 {
+		return fmt.Errorf("analysis batch exceeds 1000 pages")
+	}
+	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		for _, commit := range commits {
+			if err := completeFetchTx(ctx, tx, crawlID, commit.Fetch); err != nil {
+				return err
+			}
+			if err := saveAnalysisTx(ctx, tx, crawlID, commit.ProjectID, commit.Fetch.Lease, commit.Page, commit.Issues); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func saveAnalysisTx(ctx context.Context, tx *sql.Tx, crawlID, projectID contracts.ID, lease Lease, page extractor.Page, issues []rules.Issue) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	var canonical any
+	if len(page.Canonicals) > 0 {
+		canonical = page.Canonicals[0]
+		if normalized, err := fetchpolicy.NormalizeURL(page.Canonicals[0]); err == nil {
+			canonical = normalized.RequestKey
+		}
+	}
+	social, _ := json.Marshal(page.Social)
+	result, err := tx.ExecContext(ctx, `INSERT INTO page(crawl_url_id, extraction_mode, title, meta_description, canonical_url, robots_directives, language, text_length, content_hash, similarity_hash, extracted_at, viewport, html_hash, x_robots_tag, social_json)
+			VALUES (?, 'raw', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, lease.CrawlURLID, page.Title, page.MetaDescription, canonical,
+		page.MetaRobots, page.Language, len(page.VisibleText), page.ContentHash, page.SimilarityHash, now, page.Viewport, page.HTMLHash, page.XRobotsTag, string(social))
+	if err != nil {
+		return err
+	}
+	pageID, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+	if len(page.SimilarityHash) == 16 {
+		for band := 0; band < 4; band++ {
+			value := page.SimilarityHash[band*4 : band*4+4]
+			if _, err := tx.ExecContext(ctx, "INSERT INTO page_similarity_band(page_id,band,value) VALUES (?,?,?)", pageID, band, value); err != nil {
+				return err
+			}
+		}
+	}
+	for position, heading := range page.Headings {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO heading(page_id, position, level, text) VALUES (?, ?, ?, ?)", pageID, position, heading.Level, heading.Text); err != nil {
+			return err
+		}
+	}
+	for _, link := range page.Links {
+		targetID, err := ensureURL(ctx, tx, projectID, link.URL, now)
+		if err != nil {
+			continue
+		}
+		kind := "external"
+		if target, parseErr := fetchpolicy.NormalizeURL(link.URL); parseErr == nil && target.URL.Hostname() == mustHost(page.URL) {
+			kind = "internal"
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO link(crawl_id, source_url_id, target_url_id, raw_target, anchor_text, rel, link_kind, extraction_mode)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'raw')`, crawlID, lease.URLID, targetID, link.RawURL, link.Text, link.Rel, kind); err != nil {
+			return err
+		}
+	}
+	for position, image := range page.Images {
+		normalized, err := fetchpolicy.NormalizeURL(image.URL)
+		if err != nil {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO image(project_id, request_key, original_url, declared_width, declared_height) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(project_id, request_key) DO UPDATE SET declared_width = excluded.declared_width, declared_height = excluded.declared_height`, projectID, normalized.RequestKey, image.URL, image.Width, image.Height); err != nil {
+			return err
+		}
+		var imageID int64
+		if err := tx.QueryRowContext(ctx, "SELECT id FROM image WHERE project_id = ? AND request_key = ?", projectID, normalized.RequestKey).Scan(&imageID); err != nil {
+			return err
+		}
+		var alt any
+		if image.AltPresent {
+			alt = image.Alt
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO page_image(page_id, image_id, position, alt_text) VALUES (?, ?, ?, ?)", pageID, imageID, position, alt); err != nil {
+			return err
+		}
+	}
+	for _, item := range page.Hreflangs {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO hreflang(page_id, language_code, target_url, validation_state) VALUES (?, ?, ?, 'page_only')", pageID, item.Language, item.URL); err != nil {
+			return err
+		}
+	}
+	for _, item := range page.StructuredData {
+		evidence, _ := json.Marshal(item)
+		types, _ := json.Marshal(item.Types)
+		if _, err := tx.ExecContext(ctx, "INSERT INTO structured_data(page_id, format, type_summary, evidence_json) VALUES (?, ?, ?, ?)", pageID, item.Format, string(types), string(evidence)); err != nil {
+			return err
+		}
+	}
+	for _, issue := range issues {
+		if issue.Evidence == nil {
+			issue.Evidence = map[string]any{}
+		}
+		issue.Evidence["extraction_mode"] = "raw"
+		evidence, _ := json.Marshal(issue.Evidence)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO issue(crawl_id, rule_id, rule_version, subject_type, subject_id, severity, evidence_json, created_at) VALUES (?, ?, ?, 'page', ?, ?, ?, ?)`, crawlID, issue.RuleID, issue.RuleVersion, fmt.Sprint(pageID), issue.Severity, string(evidence), now); err != nil {
+			return err
+		}
+	}
+	updated, err := tx.ExecContext(ctx, "UPDATE crawl_url SET state = 'analysed', updated_at = ? WHERE id = ? AND state = 'fetched'", now, lease.CrawlURLID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := updated.RowsAffected(); rows != 1 {
+		return fmt.Errorf("crawl URL is not fetched")
+	}
+	_, err = tx.ExecContext(ctx, "UPDATE crawl SET analysed_count = analysed_count + 1, updated_at = ? WHERE id = ?", now, crawlID)
+	return err
 }
 
 func ensureURL(ctx context.Context, tx *sql.Tx, projectID contracts.ID, raw, now string) (int64, error) {
