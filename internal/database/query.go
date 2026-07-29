@@ -1,0 +1,167 @@
+package database
+
+import (
+	"context"
+	"database/sql"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/seo-auditor/seo-auditor/internal/contracts"
+)
+
+type AuditSummary struct {
+	CrawlID                               contracts.ID          `json:"crawl_id"`
+	Status                                contracts.CrawlStatus `json:"status"`
+	Discovered, Fetched, Analysed, Failed int64
+	IssuesBySeverity                      map[string]int64 `json:"issues_by_severity"`
+	ResponsesByClass                      map[string]int64 `json:"responses_by_class"`
+}
+
+type IssueRecord struct {
+	ID                                                        int64  `json:"id"`
+	RuleID                                                    string `json:"rule_id"`
+	RuleVersion                                               int    `json:"rule_version"`
+	SubjectType, SubjectID, Severity, EvidenceJSON, CreatedAt string
+}
+type PageRecord struct {
+	ID                                                                                 int64 `json:"id"`
+	URL, Title, MetaDescription, CanonicalURL, RobotsDirectives, Language, ContentHash string
+	StatusCode                                                                         int
+	Depth, TextLength                                                                  int
+}
+
+func (f *Frontier) Summary(ctx context.Context, crawlID contracts.ID) (AuditSummary, error) {
+	summary := AuditSummary{CrawlID: crawlID, IssuesBySeverity: map[string]int64{}, ResponsesByClass: map[string]int64{}}
+	if err := f.db.QueryRowContext(ctx, `SELECT status, discovered_count, fetched_count, analysed_count, failed_count FROM crawl WHERE id = ?`, crawlID).Scan(&summary.Status, &summary.Discovered, &summary.Fetched, &summary.Analysed, &summary.Failed); err != nil {
+		return summary, err
+	}
+	rows, err := f.db.QueryContext(ctx, "SELECT severity, count(*) FROM issue WHERE crawl_id = ? GROUP BY severity", crawlID)
+	if err != nil {
+		return summary, err
+	}
+	for rows.Next() {
+		var key string
+		var count int64
+		if err := rows.Scan(&key, &count); err != nil {
+			rows.Close()
+			return summary, err
+		}
+		summary.IssuesBySeverity[key] = count
+	}
+	if err := rows.Close(); err != nil {
+		return summary, err
+	}
+	rows, err = f.db.QueryContext(ctx, `SELECT CASE WHEN status_code IS NULL THEN 'none' ELSE printf('%dxx', status_code / 100) END, count(*) FROM fetch_attempt WHERE crawl_url_id IN (SELECT id FROM crawl_url WHERE crawl_id = ?) AND finished_at IS NOT NULL GROUP BY 1`, crawlID)
+	if err != nil {
+		return summary, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key string
+		var count int64
+		if err := rows.Scan(&key, &count); err != nil {
+			return summary, err
+		}
+		summary.ResponsesByClass[key] = count
+	}
+	return summary, rows.Err()
+}
+
+func (f *Frontier) ListIssues(ctx context.Context, crawlID contracts.ID, page contracts.PageRequest) (contracts.Page[IssueRecord], error) {
+	return listKeyset(ctx, page, func(after int64, limit int) (*sql.Rows, error) {
+		return f.db.QueryContext(ctx, `SELECT id, rule_id, rule_version, subject_type, subject_id, severity, evidence_json, created_at FROM issue WHERE crawl_id = ? AND id > ? ORDER BY id LIMIT ?`, crawlID, after, limit)
+	}, func(rows *sql.Rows) (IssueRecord, error) {
+		var item IssueRecord
+		err := rows.Scan(&item.ID, &item.RuleID, &item.RuleVersion, &item.SubjectType, &item.SubjectID, &item.Severity, &item.EvidenceJSON, &item.CreatedAt)
+		return item, err
+	}, func(item IssueRecord) int64 { return item.ID })
+}
+
+func (f *Frontier) ListPages(ctx context.Context, crawlID contracts.ID, page contracts.PageRequest) (contracts.Page[PageRecord], error) {
+	return listKeyset(ctx, page, func(after int64, limit int) (*sql.Rows, error) {
+		return f.db.QueryContext(ctx, `SELECT p.id, u.request_key, COALESCE(fa.status_code, 0), cu.depth, COALESCE(p.title,''), COALESCE(p.meta_description,''), COALESCE(p.canonical_url,''), COALESCE(p.robots_directives,''), COALESCE(p.language,''), p.text_length, COALESCE(p.content_hash,'') FROM page p JOIN crawl_url cu ON cu.id = p.crawl_url_id JOIN url u ON u.id = cu.url_id LEFT JOIN fetch_attempt fa ON fa.crawl_url_id = cu.id AND fa.attempt = cu.attempt_count WHERE cu.crawl_id = ? AND p.id > ? ORDER BY p.id LIMIT ?`, crawlID, after, limit)
+	}, func(rows *sql.Rows) (PageRecord, error) {
+		var item PageRecord
+		err := rows.Scan(&item.ID, &item.URL, &item.StatusCode, &item.Depth, &item.Title, &item.MetaDescription, &item.CanonicalURL, &item.RobotsDirectives, &item.Language, &item.TextLength, &item.ContentHash)
+		return item, err
+	}, func(item PageRecord) int64 { return item.ID })
+}
+
+func listKeyset[T any](ctx context.Context, request contracts.PageRequest, query func(int64, int) (*sql.Rows, error), scan func(*sql.Rows) (T, error), id func(T) int64) (contracts.Page[T], error) {
+	_ = ctx
+	after, err := decodeCursor(request.Cursor)
+	if err != nil {
+		return contracts.Page[T]{}, err
+	}
+	limit := request.BoundedLimit()
+	rows, err := query(after, limit+1)
+	if err != nil {
+		return contracts.Page[T]{}, err
+	}
+	defer rows.Close()
+	result := contracts.Page[T]{Items: make([]T, 0, limit)}
+	for rows.Next() {
+		item, err := scan(rows)
+		if err != nil {
+			return result, err
+		}
+		if len(result.Items) == limit {
+			result.NextCursor = encodeCursor(id(result.Items[len(result.Items)-1]))
+			break
+		}
+		result.Items = append(result.Items, item)
+	}
+	return result, rows.Err()
+}
+
+func encodeCursor(id int64) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(id, 10)))
+}
+func decodeCursor(cursor string) (int64, error) {
+	if cursor == "" {
+		return 0, nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return 0, errors.New("invalid cursor")
+	}
+	value, err := strconv.ParseInt(string(decoded), 10, 64)
+	if err != nil || value < 0 {
+		return 0, fmt.Errorf("invalid cursor")
+	}
+	return value, nil
+}
+
+func (f *Frontier) ListCrawls(ctx context.Context, projectID contracts.ID, page contracts.PageRequest) (contracts.Page[contracts.CrawlProgress], error) {
+	limit := page.BoundedLimit()
+	after, err := decodeCursor(page.Cursor)
+	if err != nil {
+		return contracts.Page[contracts.CrawlProgress]{}, err
+	}
+	rows, err := f.db.QueryContext(ctx, `SELECT rowid, id, status, discovered_count, fetched_count, analysed_count, failed_count, updated_at, terminal_reason FROM crawl WHERE project_id = ? AND rowid > ? ORDER BY rowid LIMIT ?`, projectID, after, limit+1)
+	if err != nil {
+		return contracts.Page[contracts.CrawlProgress]{}, err
+	}
+	defer rows.Close()
+	result := contracts.Page[contracts.CrawlProgress]{Items: make([]contracts.CrawlProgress, 0, limit)}
+	var last int64
+	for rows.Next() {
+		var item contracts.CrawlProgress
+		var updated string
+		var rowid int64
+		if err := rows.Scan(&rowid, &item.CrawlID, &item.Status, &item.Discovered, &item.Fetched, &item.Analysed, &item.Failed, &updated, &item.TerminalReason); err != nil {
+			return result, err
+		}
+		if len(result.Items) == limit {
+			result.NextCursor = encodeCursor(last)
+			break
+		}
+		item.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+		result.Items = append(result.Items, item)
+		last = rowid
+	}
+	return result, rows.Err()
+}

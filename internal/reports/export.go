@@ -1,0 +1,75 @@
+package reports
+
+import (
+	"context"
+	"encoding/csv"
+	"encoding/json"
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/seo-auditor/seo-auditor/internal/contracts"
+	"github.com/seo-auditor/seo-auditor/internal/database"
+)
+
+type QuerySource interface {
+	ListPages(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.PageRecord], error)
+	ListIssues(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.IssueRecord], error)
+}
+
+func PagesCSV(ctx context.Context, source QuerySource, crawlID contracts.ID, output io.Writer) error {
+	writer := csv.NewWriter(output)
+	if err := writer.Write([]string{"url", "status_code", "depth", "title", "meta_description", "canonical", "robots", "language", "text_length", "content_hash"}); err != nil {
+		return err
+	}
+	cursor := ""
+	for {
+		page, err := source.ListPages(ctx, crawlID, contracts.PageRequest{Cursor: cursor, Limit: 1000})
+		if err != nil {
+			return err
+		}
+		for _, item := range page.Items {
+			row := []string{item.URL, fmt.Sprint(item.StatusCode), fmt.Sprint(item.Depth), item.Title, item.MetaDescription, item.CanonicalURL, item.RobotsDirectives, item.Language, fmt.Sprint(item.TextLength), item.ContentHash}
+			for index := range row {
+				row[index] = spreadsheetSafe(row[index])
+			}
+			if err := writer.Write(row); err != nil {
+				return err
+			}
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	writer.Flush()
+	return writer.Error()
+}
+
+func IssuesNDJSON(ctx context.Context, source QuerySource, crawlID contracts.ID, output io.Writer) error {
+	encoder := json.NewEncoder(output)
+	cursor := ""
+	for {
+		page, err := source.ListIssues(ctx, crawlID, contracts.PageRequest{Cursor: cursor, Limit: 1000})
+		if err != nil {
+			return err
+		}
+		for _, item := range page.Items {
+			if err := encoder.Encode(item); err != nil {
+				return err
+			}
+		}
+		if page.NextCursor == "" {
+			return nil
+		}
+		cursor = page.NextCursor
+	}
+}
+
+func spreadsheetSafe(value string) string {
+	trimmed := strings.TrimLeft(value, "\t\r\n ")
+	if trimmed != "" && strings.ContainsRune("=+-@", rune(trimmed[0])) {
+		return "'" + value
+	}
+	return value
+}
