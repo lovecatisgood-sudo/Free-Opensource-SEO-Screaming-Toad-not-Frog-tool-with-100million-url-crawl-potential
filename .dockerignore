@@ -1,0 +1,16 @@
+.git
+.data
+.cache
+.tools
+.artifacts
+.coverage
+node_modules
+web/**/node_modules
+web/**/dist
+open-seo-crawler
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+

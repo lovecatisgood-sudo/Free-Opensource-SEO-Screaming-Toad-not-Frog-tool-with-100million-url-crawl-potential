@@ -1,0 +1,56 @@
+name: seo-auditor
+
+x-sandbox: &sandbox
+  build:
+    context: .
+    dockerfile: .devcontainer/Dockerfile
+    args:
+      USER_ID: "${LOCAL_UID:-1000}"
+      GROUP_ID: "${LOCAL_GID:-1000}"
+  working_dir: /workspace
+  user: auditor
+  init: true
+  read_only: false
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  volumes:
+    - .:/workspace
+    - go-mod-cache:/home/auditor/go/pkg/mod
+    - go-build-cache:/home/auditor/.cache/go-build
+    - pnpm-cache:/home/auditor/.local/share/pnpm/store
+  tmpfs:
+    - /tmp:rw,exec,nosuid,nodev,size=2g
+  environment:
+    SEO_AUDITOR_ENV: development
+    SEO_AUDITOR_DATA_DIR: /workspace/.data
+    SEO_AUDITOR_CACHE_DIR: /workspace/.cache
+    SEO_AUDITOR_ARTIFACT_DIR: /workspace/.artifacts
+    SEO_AUDITOR_BIND_HOST: 127.0.0.1
+    SEO_AUDITOR_BIND_PORT: "7331"
+    GOMEMLIMIT: 4GiB
+
+services:
+  dev:
+    <<: *sandbox
+    command: sleep infinity
+    ports:
+      - "127.0.0.1:7331:7331"
+    networks:
+      - devnet
+
+  offline-test:
+    <<: *sandbox
+    profiles: [offline]
+    command: make test
+    network_mode: none
+
+volumes:
+  go-mod-cache:
+  go-build-cache:
+  pnpm-cache:
+
+networks:
+  devnet:
+    driver: bridge

@@ -1,0 +1,36 @@
+.data/
+.cache/
+.tools/
+.artifacts/
+.coverage/
+.env
+
+# Go
+/bin/
+*.test
+*.out
+
+# Node
+node_modules/
+.pnpm-store/
+web/**/node_modules/
+web/**/dist/
+playwright-report/
+test-results/
+
+# Local databases and crawl artifacts
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Third-party reference checkout; never part of the product build or release.
+/open-seo-crawler/
+
