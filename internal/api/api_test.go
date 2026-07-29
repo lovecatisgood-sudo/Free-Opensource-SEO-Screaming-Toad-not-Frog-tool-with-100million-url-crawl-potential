@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -32,6 +33,9 @@ func (*fakeBackend) ListIssues(context.Context, contracts.ID, contracts.PageRequ
 func (*fakeBackend) ListLinks(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.LinkRecord], error) {
 	return contracts.Page[database.LinkRecord]{Items: []database.LinkRecord{}}, nil
 }
+func (*fakeBackend) ListEvents(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.CrawlEventRecord], error) {
+	return contracts.Page[database.CrawlEventRecord]{Items: []database.CrawlEventRecord{}}, nil
+}
 func (*fakeBackend) GetPage(context.Context, contracts.ID, int64) (database.PageDetail, error) {
 	return database.PageDetail{}, nil
 }
@@ -45,6 +49,9 @@ func (*fakeBackend) Artifact(context.Context, contracts.ID) (application.Artifac
 	return application.Artifact{}, nil
 }
 func (*fakeBackend) Backup(context.Context, contracts.ID) (application.Artifact, error) {
+	return application.Artifact{}, nil
+}
+func (*fakeBackend) Diagnostic(context.Context, contracts.ID) (application.Artifact, error) {
 	return application.Artifact{}, nil
 }
 func (*fakeBackend) TrashCrawl(context.Context, contracts.ID) error   { return nil }
@@ -135,5 +142,25 @@ func TestUnknownSortIsRejectedByBackendContract(t *testing.T) {
 	handler.ServeHTTP(result, request)
 	if result.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d", result.Code)
+	}
+}
+
+func TestRespondMapsSafeDomainErrors(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		err    error
+		status int
+	}{
+		"missing": {sql.ErrNoRows, http.StatusNotFound},
+		"blocked": {&contracts.AppError{Code: contracts.CodeTargetBlocked, Message: "target rejected"}, http.StatusForbidden},
+		"unknown": {context.DeadlineExceeded, http.StatusInternalServerError},
+	} {
+		t.Run(name, func(t *testing.T) {
+			result := httptest.NewRecorder()
+			respond(result, nil, test.err)
+			if result.Code != test.status {
+				t.Fatalf("status=%d want=%d body=%s", result.Code, test.status, result.Body.String())
+			}
+		})
 	}
 }

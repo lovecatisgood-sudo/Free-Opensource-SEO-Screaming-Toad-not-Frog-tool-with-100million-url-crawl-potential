@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
@@ -48,5 +49,16 @@ func TestManagedExportAndBackupStayInsideArtifactDirectory(t *testing.T) {
 	}
 	if filepath.Ext(backup.Path) != ".sqlite3" {
 		t.Fatalf("backup=%+v", backup)
+	}
+	diagnostic, err := service.Diagnostic(ctx, crawlID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(diagnostic.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"crawled_content_excluded": true`) || strings.Contains(string(body), "example.com") {
+		t.Fatalf("diagnostic content was incomplete or leaked a URL: %s", body)
 	}
 }

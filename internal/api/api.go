@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -29,11 +30,13 @@ type Backend interface {
 	ListPages(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.PageRecord], error)
 	ListIssues(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.IssueRecord], error)
 	ListLinks(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.LinkRecord], error)
+	ListEvents(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.CrawlEventRecord], error)
 	GetPage(context.Context, contracts.ID, int64) (database.PageDetail, error)
 	CompareCrawls(context.Context, contracts.ID, contracts.ID) (database.CrawlComparison, error)
 	Export(context.Context, application.ExportRequest) (application.Artifact, error)
 	Artifact(context.Context, contracts.ID) (application.Artifact, error)
 	Backup(context.Context, contracts.ID) (application.Artifact, error)
+	Diagnostic(context.Context, contracts.ID) (application.Artifact, error)
 	TrashCrawl(context.Context, contracts.ID) error
 	RestoreCrawl(context.Context, contracts.ID) error
 	CreateProject(context.Context, string) (database.ProjectRecord, error)
@@ -294,6 +297,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			writeJSON(w, http.StatusCreated, value)
 			return
+		case "diagnostics":
+			value, err := h.backend.Diagnostic(r.Context(), crawlID)
+			if err != nil {
+				respond(w, nil, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, value)
+			return
 		}
 		if mutation != nil {
 			if err := mutation(r.Context(), crawlID); err != nil {
@@ -328,6 +339,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		respond(w, value, err)
 	case "links":
 		value, err := h.backend.ListLinks(r.Context(), crawlID, page)
+		respond(w, value, err)
+	case "timeline":
+		value, err := h.backend.ListEvents(r.Context(), crawlID, page)
 		respond(w, value, err)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "route not found")
@@ -586,7 +600,27 @@ func pageRequest(r *http.Request) (contracts.PageRequest, error) {
 func respond(w http.ResponseWriter, value any, err error) {
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			writeError(w, 499, "cancelled", err.Error())
+			writeError(w, 499, "cancelled", "request was cancelled")
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, string(contracts.CodeNotFound), "resource was not found")
+			return
+		}
+		var appError *contracts.AppError
+		if errors.As(err, &appError) {
+			status := map[contracts.ErrorCode]int{
+				contracts.CodeInvalidArgument: http.StatusBadRequest,
+				contracts.CodeNotFound:        http.StatusNotFound,
+				contracts.CodeConflict:        http.StatusConflict,
+				contracts.CodeLimitReached:    http.StatusTooManyRequests,
+				contracts.CodeTargetBlocked:   http.StatusForbidden,
+				contracts.CodeUnavailable:     http.StatusServiceUnavailable,
+			}[appError.Code]
+			if status == 0 {
+				status = http.StatusInternalServerError
+			}
+			writeError(w, status, string(appError.Code), appError.Message)
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "internal", "request failed")

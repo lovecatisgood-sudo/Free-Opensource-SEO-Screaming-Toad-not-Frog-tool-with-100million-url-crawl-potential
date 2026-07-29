@@ -22,6 +22,7 @@ rule_id IN ('AUD-06','AUD-07','AUD-08','AUD-11') OR
 (rule_id='AUD-01' AND subject_type='link') OR
 (rule_id='AUD-02' AND json_type(evidence_json,'$.duplicate_count') IS NOT NULL) OR
 (rule_id='AUD-04' AND json_type(evidence_json,'$.target_status') IS NOT NULL) OR
+(rule_id='AUD-09' AND json_type(evidence_json,'$.reciprocal') IS NOT NULL) OR
 (rule_id='AUD-10' AND json_type(evidence_json,'$.status_code') IS NOT NULL))`, crawlID); err != nil {
 			return err
 		}
@@ -46,12 +47,13 @@ FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN
 (SELECT p2.meta_description value,count(*) n FROM page p2 JOIN crawl_url cu2 ON cu2.id=p2.crawl_url_id WHERE cu2.crawl_id=? AND trim(COALESCE(p2.meta_description,''))<>'' GROUP BY p2.meta_description HAVING count(*)>1) d ON d.value=p.meta_description
 WHERE cu.crawl_id=?`, []any{crawlID, now, crawlID, crawlID}},
 			{`INSERT INTO issue(crawl_id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at)
-SELECT ?, 'AUD-04', 1, 'page', CAST(p.id AS TEXT), 'error', json_object('canonical',p.canonical_url,'target_status',COALESCE(fa.status_code,0),'target_state',COALESCE(tcu.state,'not_crawled')), ?
+SELECT ?, 'AUD-04', 1, 'page', CAST(p.id AS TEXT), 'error', json_object('canonical',p.canonical_url,'target_status',COALESCE(fa.status_code,0),'target_state',COALESCE(tcu.state,'not_crawled'),'target_canonical',COALESCE(tp.canonical_url,''),'target_noindex',CASE WHEN lower(COALESCE(tp.robots_directives,'')||','||COALESCE(tp.x_robots_tag,'')) LIKE '%noindex%' THEN json('true') ELSE json('false') END), ?
 FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id
 LEFT JOIN url target ON target.project_id=(SELECT project_id FROM crawl WHERE id=?) AND target.request_key=p.canonical_url
 LEFT JOIN crawl_url tcu ON tcu.crawl_id=? AND tcu.url_id=target.id
 LEFT JOIN fetch_attempt fa ON fa.crawl_url_id=tcu.id AND fa.attempt=tcu.attempt_count
-WHERE cu.crawl_id=? AND p.canonical_url IS NOT NULL AND (tcu.id IS NULL OR tcu.state='failed' OR COALESCE(fa.status_code,0)<>200)`, []any{crawlID, now, crawlID, crawlID, crawlID}},
+LEFT JOIN page tp ON tp.crawl_url_id=tcu.id
+WHERE cu.crawl_id=? AND p.canonical_url IS NOT NULL AND (tcu.id IS NULL OR tcu.state='failed' OR COALESCE(fa.status_code,0)<>200 OR (tp.canonical_url IS NOT NULL AND tp.canonical_url<>p.canonical_url) OR lower(COALESCE(tp.robots_directives,'')||','||COALESCE(tp.x_robots_tag,'')) LIKE '%noindex%')`, []any{crawlID, now, crawlID, crawlID, crawlID}},
 			{`INSERT INTO issue(crawl_id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at)
 SELECT ?, 'AUD-06', 1, 'page', CAST(p.id AS TEXT), 'info', json_object('in_sitemap',json('false'),'url',u.request_key), ?
 FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url u ON u.id=cu.url_id
@@ -61,10 +63,11 @@ WHERE cu.crawl_id=? AND se.url_id IS NULL AND fa.status_code=200 AND lower(COALE
 			{`INSERT INTO issue(crawl_id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at)
 SELECT ?, 'AUD-06', 1, 'sitemap', CAST(id AS TEXT), 'error', json_object('sitemap_url',url,'status',status), ? FROM sitemap WHERE crawl_id=? AND status<>'ok'`, []any{crawlID, now, crawlID}},
 			{`INSERT INTO issue(crawl_id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at)
-SELECT ?, 'AUD-06', 1, 'url', CAST(u.id AS TEXT), 'warning', json_object('url',u.request_key,'status_code',COALESCE(fa.status_code,0),'state',COALESCE(cu.state,'not_crawled')), ?
+SELECT ?, 'AUD-06', 1, 'url', CAST(u.id AS TEXT), 'warning', json_object('url',u.request_key,'status_code',COALESCE(fa.status_code,0),'state',COALESCE(cu.state,'not_crawled'),'noindex',CASE WHEN lower(COALESCE(p.robots_directives,'')||','||COALESCE(p.x_robots_tag,'')) LIKE '%noindex%' THEN json('true') ELSE json('false') END), ?
 FROM sitemap_entry se JOIN sitemap s ON s.id=se.sitemap_id JOIN url u ON u.id=se.url_id
 LEFT JOIN crawl_url cu ON cu.crawl_id=s.crawl_id AND cu.url_id=u.id LEFT JOIN fetch_attempt fa ON fa.crawl_url_id=cu.id AND fa.attempt=cu.attempt_count
-WHERE s.crawl_id=? AND (cu.id IS NULL OR cu.state='failed' OR COALESCE(fa.status_code,0)<>200)`, []any{crawlID, now, crawlID}},
+LEFT JOIN page p ON p.crawl_url_id=cu.id
+WHERE s.crawl_id=? AND (cu.id IS NULL OR cu.state='failed' OR COALESCE(fa.status_code,0)<>200 OR lower(COALESCE(p.robots_directives,'')||','||COALESCE(p.x_robots_tag,'')) LIKE '%noindex%')`, []any{crawlID, now, crawlID}},
 			{`INSERT INTO issue(crawl_id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at)
 SELECT ?, 'AUD-07', 1, 'url', CAST(cu.id AS TEXT), 'warning', json_object('url',u.request_key,'robots_decision','disallowed'), ?
 FROM crawl_url cu JOIN url u ON u.id=cu.url_id WHERE cu.crawl_id=? AND cu.robots_decision='disallowed'`, []any{crawlID, now, crawlID}},
@@ -73,6 +76,13 @@ SELECT ?, 'AUD-08', 1, 'page', CAST(p.id AS TEXT), 'warning', json_object('conte
 FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN
 (SELECT p2.content_hash value,count(*) n FROM page p2 JOIN crawl_url cu2 ON cu2.id=p2.crawl_url_id WHERE cu2.crawl_id=? AND COALESCE(p2.content_hash,'')<>'' GROUP BY p2.content_hash HAVING count(*)>1) d ON d.value=p.content_hash
 WHERE cu.crawl_id=?`, []any{crawlID, now, crawlID, crawlID}},
+			{`INSERT INTO issue(crawl_id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at)
+SELECT ?, 'AUD-09', 1, 'page', CAST(p.id AS TEXT), 'warning', json_object('hreflang',h.language_code,'target',h.target_url,'reciprocal',json('false'),'target_state',COALESCE(tcu.state,'not_crawled')), ?
+FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url source_url ON source_url.id=cu.url_id JOIN hreflang h ON h.page_id=p.id
+LEFT JOIN url target_url ON target_url.project_id=source_url.project_id AND target_url.request_key=h.target_url
+LEFT JOIN crawl_url tcu ON tcu.crawl_id=cu.crawl_id AND tcu.url_id=target_url.id
+LEFT JOIN page target_page ON target_page.crawl_url_id=tcu.id
+WHERE cu.crawl_id=? AND (target_page.id IS NULL OR NOT EXISTS (SELECT 1 FROM hreflang back WHERE back.page_id=target_page.id AND back.target_url=source_url.request_key))`, []any{crawlID, now, crawlID}},
 			{`INSERT INTO issue(crawl_id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at)
 SELECT ?, 'AUD-10', 1, 'image', CAST(i.id AS TEXT), 'error', json_object('image_url',i.request_key,'status_code',COALESCE(fa.status_code,0),'state',COALESCE(cu.state,'not_crawled')), ?
 FROM image i JOIN page_image pi ON pi.image_id=i.id JOIN page p ON p.id=pi.page_id JOIN crawl_url source ON source.id=p.crawl_url_id

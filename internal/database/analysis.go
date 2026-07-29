@@ -87,6 +87,10 @@ func (f *Frontier) SaveAnalysis(ctx context.Context, crawlID, projectID contract
 			}
 		}
 		for _, issue := range issues {
+			if issue.Evidence == nil {
+				issue.Evidence = map[string]any{}
+			}
+			issue.Evidence["extraction_mode"] = "raw"
 			evidence, _ := json.Marshal(issue.Evidence)
 			if _, err := tx.ExecContext(ctx, `INSERT INTO issue(crawl_id, rule_id, rule_version, subject_type, subject_id, severity, evidence_json, created_at) VALUES (?, ?, ?, 'page', ?, ?, ?, ?)`, crawlID, issue.RuleID, issue.RuleVersion, fmt.Sprint(pageID), issue.Severity, string(evidence), now); err != nil {
 				return err

@@ -107,6 +107,13 @@ func TestFrontierControlTransitions(t *testing.T) {
 	if err != nil || progress.Status != contracts.CrawlCancelled {
 		t.Fatalf("progress = %+v, err = %v", progress, err)
 	}
+	events, err := frontier.ListEvents(ctx, crawlID, contracts.PageRequest{Limit: 20})
+	if err != nil || len(events.Items) != 6 {
+		t.Fatalf("events=%+v err=%v", events, err)
+	}
+	if events.Items[0].Event != "created" || events.Items[len(events.Items)-1].Event != "status_changed" {
+		t.Fatalf("unexpected event timeline: %+v", events.Items)
+	}
 }
 
 func TestInterruptedCrawlRecoversPausedWithPersistedConfiguration(t *testing.T) {

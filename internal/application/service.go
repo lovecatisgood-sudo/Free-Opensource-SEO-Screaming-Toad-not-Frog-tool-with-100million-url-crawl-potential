@@ -356,6 +356,9 @@ func (s *Service) ListIssues(ctx context.Context, crawlID contracts.ID, page con
 func (s *Service) ListLinks(ctx context.Context, crawlID contracts.ID, page contracts.PageRequest) (contracts.Page[database.LinkRecord], error) {
 	return s.frontier.ListLinks(ctx, crawlID, page)
 }
+func (s *Service) ListEvents(ctx context.Context, crawlID contracts.ID, page contracts.PageRequest) (contracts.Page[database.CrawlEventRecord], error) {
+	return s.frontier.ListEvents(ctx, crawlID, page)
+}
 func (s *Service) GetPage(ctx context.Context, crawlID contracts.ID, pageID int64) (database.PageDetail, error) {
 	return s.frontier.GetPage(ctx, crawlID, pageID)
 }

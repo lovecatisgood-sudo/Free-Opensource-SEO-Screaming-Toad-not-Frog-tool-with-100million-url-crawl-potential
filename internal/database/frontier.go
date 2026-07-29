@@ -51,6 +51,10 @@ func (f *Frontier) CreateCrawl(ctx context.Context, crawlID, projectID, profileI
 	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO crawl(id, project_id, profile_id, seed_url, config_json, status, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`, crawlID, projectID, nullableID(profileID), seed.RequestKey, string(config), now, now)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO crawl_event(crawl_id,event_type,payload_json,created_at) VALUES (?,'created',json_object('status','pending'),?)`, crawlID, now)
 		return err
 	})
 }
@@ -99,6 +103,10 @@ func (f *Frontier) LoadCrawl(ctx context.Context, crawlID contracts.ID) (StoredC
 func (f *Frontier) RecoverInterruptedCrawls(ctx context.Context) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO crawl_event(crawl_id,event_type,payload_json,created_at)
+			SELECT id,'recovered',json_object('previous_status',status,'next_status',CASE WHEN status='cancelling' THEN 'cancelled' ELSE 'paused' END),? FROM crawl WHERE status IN ('running','pausing','cancelling')`, now); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE crawl_url SET state='queued',lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE crawl_id IN (SELECT id FROM crawl WHERE status IN ('running','pausing')) AND state='leased'`, now); err != nil {
 			return err
 		}
@@ -347,8 +355,17 @@ func (f *Frontier) SetStatus(ctx context.Context, crawlID contracts.ID, from []c
 		}
 		_, err := tx.ExecContext(ctx, `UPDATE crawl SET status = ?, terminal_reason = ?, started_at = COALESCE(started_at, ?), finished_at = COALESCE(?, finished_at), updated_at = ? WHERE id = ?`,
 			to, reason, started, finished, now, crawlID)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO crawl_event(crawl_id,event_type,payload_json,created_at) VALUES (?,?,?,?)`, crawlID, "status_changed", statusEventJSON(current, to, reason), now)
 		return err
 	})
+}
+
+func statusEventJSON(from, to contracts.CrawlStatus, reason string) string {
+	value, _ := json.Marshal(map[string]string{"from": string(from), "to": string(to), "reason": reason})
+	return string(value)
 }
 
 func (f *Frontier) Progress(ctx context.Context, crawlID contracts.ID) (contracts.CrawlProgress, error) {
