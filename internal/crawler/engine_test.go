@@ -73,7 +73,7 @@ func TestEngineCrawlsBoundedGraphOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if progress.Status != contracts.CrawlCompleted || progress.Discovered != 3 || progress.Fetched != 3 || progress.Queued != 0 {
+	if progress.Status != contracts.CrawlCompleted || progress.Discovered != 3 || progress.Fetched != 3 || progress.Analysed != 3 || progress.Queued != 0 {
 		t.Fatalf("unexpected progress: %+v", progress)
 	}
 	for target, calls := range fetcher.calls {

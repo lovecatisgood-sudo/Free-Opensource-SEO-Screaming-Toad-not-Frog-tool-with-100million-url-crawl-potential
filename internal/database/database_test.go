@@ -26,8 +26,8 @@ func TestOpenMigratesAndEnablesWAL(t *testing.T) {
 	if err := db.SQL().QueryRow("SELECT count(*) FROM schema_migration").Scan(&count); err != nil {
 		t.Fatalf("migration count: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("migration count = %d, want 1", count)
+	if count != 2 {
+		t.Fatalf("migration count = %d, want 2", count)
 	}
 }
 

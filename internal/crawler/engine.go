@@ -11,7 +11,9 @@ import (
 
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
 	"github.com/seo-auditor/seo-auditor/internal/database"
+	"github.com/seo-auditor/seo-auditor/internal/extractor"
 	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
+	"github.com/seo-auditor/seo-auditor/internal/rules"
 )
 
 type Fetcher interface {
@@ -216,12 +218,26 @@ func (e *Engine) commitResult(ctx context.Context, request RunRequest, result wo
 	}); err != nil {
 		return err
 	}
-	if result.lease.Depth >= request.Limits.MaximumDepth || !isHTML(result.fetch.ContentType) {
+	if !isHTML(result.fetch.ContentType) {
 		return nil
 	}
-	links, err := DiscoverLinks(result.fetch.FinalURL, result.fetch.Body, maxLinks)
+	page, err := extractor.Extract(result.fetch.FinalURL, result.fetch.Header, result.fetch.Body)
 	if err != nil {
 		return nil // malformed HTML is evidence for extraction, not a crawl failure.
+	}
+	issues := rules.EvaluatePage(rules.PageInput{Page: page, StatusCode: result.fetch.StatusCode, Headers: result.fetch.Header, Depth: result.lease.Depth}, rules.DefaultThresholds())
+	if err := e.Frontier.SaveAnalysis(ctx, request.CrawlID, request.ProjectID, result.lease, page, issues); err != nil {
+		return err
+	}
+	if result.lease.Depth >= request.Limits.MaximumDepth {
+		return nil
+	}
+	links := make([]string, 0, min(maxLinks, len(page.Links)))
+	for _, link := range page.Links {
+		if len(links) >= maxLinks {
+			break
+		}
+		links = append(links, link.URL)
 	}
 	parent := result.lease.CrawlURLID
 	for _, raw := range links {
