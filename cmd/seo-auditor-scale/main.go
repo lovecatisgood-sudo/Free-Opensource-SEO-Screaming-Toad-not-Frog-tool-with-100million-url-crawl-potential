@@ -46,8 +46,15 @@ func (g *generator) Fetch(_ context.Context, raw string) (fetchpolicy.FetchResul
 }
 
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fail(errors.New("usage: seo-auditor-scale run --urls N --database PATH"))
+	if len(os.Args) < 2 {
+		fail(errors.New("usage: seo-auditor-scale <run|status> --database PATH"))
+	}
+	if os.Args[1] == "status" {
+		status(os.Args[2:])
+		return
+	}
+	if os.Args[1] != "run" {
+		fail(errors.New("usage: seo-auditor-scale <run|status> --database PATH"))
 	}
 	flags := flag.NewFlagSet("run", flag.ExitOnError)
 	urls := flags.Int64("urls", 1_000_000, "unique synthetic URLs")
@@ -101,6 +108,33 @@ func main() {
 	if err := verification.Error(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func status(arguments []string) {
+	flags := flag.NewFlagSet("status", flag.ExitOnError)
+	databasePath := flags.String("database", ".data/scale.sqlite3", "benchmark database path")
+	_ = flags.Parse(arguments)
+	ctx := context.Background()
+	db, err := database.Open(ctx, *databasePath)
+	if err != nil {
+		fail(err)
+	}
+	defer db.Close()
+	frontier := database.NewFrontier(db, 16)
+	defer frontier.Close()
+	progress, err := frontier.Progress(ctx, contracts.ID("crawl_scale"))
+	if err != nil {
+		fail(err)
+	}
+	segments, err := frontier.ListSegments(ctx, contracts.ID("crawl_scale"))
+	if err != nil {
+		fail(err)
+	}
+	storage, err := frontier.StorageBytes()
+	if err != nil {
+		fail(err)
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"progress": progress, "segments": segments, "storage_bytes": storage})
 }
 
 func fail(err error) {
