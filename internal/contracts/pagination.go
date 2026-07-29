@@ -6,8 +6,12 @@ const (
 )
 
 type PageRequest struct {
-	Cursor string `json:"cursor,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
+	Cursor   string `json:"cursor,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+	Search   string `json:"search,omitempty"`
+	Sort     string `json:"sort,omitempty"`
+	Severity string `json:"severity,omitempty"`
+	RuleID   string `json:"rule_id,omitempty"`
 }
 
 func (p PageRequest) BoundedLimit() int {

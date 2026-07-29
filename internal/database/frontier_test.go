@@ -27,7 +27,7 @@ func testFrontier(t *testing.T) (*Frontier, contracts.ID, contracts.ID) {
 	}
 	seed, _ := fetchpolicy.NormalizeURL("https://example.com/")
 	configuration := contracts.CrawlConfiguration{SeedURL: seed.RequestKey, AllowedHosts: []string{seed.URL.Hostname()}, UserAgent: "test", RenderingMode: "raw", Limits: contracts.DefaultCrawlLimits()}
-	if err := frontier.CreateCrawl(context.Background(), crawlID, projectID, seed, configuration); err != nil {
+	if err := frontier.CreateCrawl(context.Background(), crawlID, projectID, "", seed, configuration); err != nil {
 		t.Fatal(err)
 	}
 	return frontier, projectID, crawlID
@@ -136,5 +136,34 @@ func TestInterruptedCrawlRecoversPausedWithPersistedConfiguration(t *testing.T) 
 	}
 	if stored.Configuration.SeedURL != "https://example.com/" || stored.Configuration.Limits.MaximumURLs != contracts.DefaultCrawlLimits().MaximumURLs {
 		t.Fatalf("configuration=%+v", stored.Configuration)
+	}
+}
+
+func TestTerminalCrawlTrashAndRestore(t *testing.T) {
+	t.Parallel()
+	frontier, _, crawlID := testFrontier(t)
+	ctx := context.Background()
+	if err := frontier.SetStatus(ctx, crawlID, []contracts.CrawlStatus{contracts.CrawlPending}, contracts.CrawlCompleted, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := frontier.TrashCrawl(ctx, crawlID); err != nil {
+		t.Fatal(err)
+	}
+	var deleted any
+	if err := frontier.db.QueryRowContext(ctx, `SELECT deleted_at FROM crawl WHERE id=?`, crawlID).Scan(&deleted); err != nil {
+		t.Fatal(err)
+	}
+	if deleted == nil {
+		t.Fatal("crawl was not trashed")
+	}
+	if err := frontier.RestoreCrawl(ctx, crawlID); err != nil {
+		t.Fatal(err)
+	}
+	var active int
+	if err := frontier.db.QueryRowContext(ctx, `SELECT count(*) FROM crawl WHERE id=? AND deleted_at IS NULL`, crawlID).Scan(&active); err != nil {
+		t.Fatal(err)
+	}
+	if active != 1 {
+		t.Fatal("crawl was not restored")
 	}
 }

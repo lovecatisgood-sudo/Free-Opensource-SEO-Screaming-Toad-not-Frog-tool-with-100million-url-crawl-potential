@@ -7,30 +7,45 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
 )
 
 type AuditSummary struct {
-	CrawlID                               contracts.ID          `json:"crawl_id"`
-	Status                                contracts.CrawlStatus `json:"status"`
-	Discovered, Fetched, Analysed, Failed int64
-	IssuesBySeverity                      map[string]int64 `json:"issues_by_severity"`
-	ResponsesByClass                      map[string]int64 `json:"responses_by_class"`
+	CrawlID          contracts.ID          `json:"crawl_id"`
+	Status           contracts.CrawlStatus `json:"status"`
+	Discovered       int64                 `json:"discovered"`
+	Fetched          int64                 `json:"fetched"`
+	Analysed         int64                 `json:"analysed"`
+	Failed           int64                 `json:"failed"`
+	IssuesBySeverity map[string]int64      `json:"issues_by_severity"`
+	ResponsesByClass map[string]int64      `json:"responses_by_class"`
 }
 
 type IssueRecord struct {
-	ID                                                        int64  `json:"id"`
-	RuleID                                                    string `json:"rule_id"`
-	RuleVersion                                               int    `json:"rule_version"`
-	SubjectType, SubjectID, Severity, EvidenceJSON, CreatedAt string
+	ID           int64  `json:"id"`
+	RuleID       string `json:"rule_id"`
+	RuleVersion  int    `json:"rule_version"`
+	SubjectType  string `json:"subject_type"`
+	SubjectID    string `json:"subject_id"`
+	Severity     string `json:"severity"`
+	EvidenceJSON string `json:"evidence_json"`
+	CreatedAt    string `json:"created_at"`
 }
 type PageRecord struct {
-	ID                                                                                 int64 `json:"id"`
-	URL, Title, MetaDescription, CanonicalURL, RobotsDirectives, Language, ContentHash string
-	StatusCode                                                                         int
-	Depth, TextLength                                                                  int
+	ID               int64  `json:"id"`
+	URL              string `json:"url"`
+	Title            string `json:"title"`
+	MetaDescription  string `json:"meta_description"`
+	CanonicalURL     string `json:"canonical_url"`
+	RobotsDirectives string `json:"robots_directives"`
+	Language         string `json:"language"`
+	ContentHash      string `json:"content_hash"`
+	StatusCode       int    `json:"status_code"`
+	Depth            int    `json:"depth"`
+	TextLength       int    `json:"text_length"`
 }
 
 func (f *Frontier) Summary(ctx context.Context, crawlID contracts.ID) (AuditSummary, error) {
@@ -71,8 +86,12 @@ func (f *Frontier) Summary(ctx context.Context, crawlID contracts.ID) (AuditSumm
 }
 
 func (f *Frontier) ListIssues(ctx context.Context, crawlID contracts.ID, page contracts.PageRequest) (contracts.Page[IssueRecord], error) {
+	if err := validateQuery(page, true); err != nil {
+		return contracts.Page[IssueRecord]{}, err
+	}
+	search := likeSearch(page.Search)
 	return listKeyset(ctx, page, func(after int64, limit int) (*sql.Rows, error) {
-		return f.db.QueryContext(ctx, `SELECT id, rule_id, rule_version, subject_type, subject_id, severity, evidence_json, created_at FROM issue WHERE crawl_id = ? AND id > ? ORDER BY id LIMIT ?`, crawlID, after, limit)
+		return f.db.QueryContext(ctx, `SELECT id, rule_id, rule_version, subject_type, subject_id, severity, evidence_json, created_at FROM issue WHERE crawl_id = ? AND id > ? AND (?='' OR severity=?) AND (?='' OR rule_id=?) AND (?='' OR evidence_json LIKE ? ESCAPE '\') ORDER BY id LIMIT ?`, crawlID, after, page.Severity, page.Severity, page.RuleID, page.RuleID, page.Search, search, limit)
 	}, func(rows *sql.Rows) (IssueRecord, error) {
 		var item IssueRecord
 		err := rows.Scan(&item.ID, &item.RuleID, &item.RuleVersion, &item.SubjectType, &item.SubjectID, &item.Severity, &item.EvidenceJSON, &item.CreatedAt)
@@ -81,13 +100,39 @@ func (f *Frontier) ListIssues(ctx context.Context, crawlID contracts.ID, page co
 }
 
 func (f *Frontier) ListPages(ctx context.Context, crawlID contracts.ID, page contracts.PageRequest) (contracts.Page[PageRecord], error) {
+	if err := validateQuery(page, false); err != nil {
+		return contracts.Page[PageRecord]{}, err
+	}
+	search := likeSearch(page.Search)
 	return listKeyset(ctx, page, func(after int64, limit int) (*sql.Rows, error) {
-		return f.db.QueryContext(ctx, `SELECT p.id, u.request_key, COALESCE(fa.status_code, 0), cu.depth, COALESCE(p.title,''), COALESCE(p.meta_description,''), COALESCE(p.canonical_url,''), COALESCE(p.robots_directives,''), COALESCE(p.language,''), p.text_length, COALESCE(p.content_hash,'') FROM page p JOIN crawl_url cu ON cu.id = p.crawl_url_id JOIN url u ON u.id = cu.url_id LEFT JOIN fetch_attempt fa ON fa.crawl_url_id = cu.id AND fa.attempt = cu.attempt_count WHERE cu.crawl_id = ? AND p.id > ? ORDER BY p.id LIMIT ?`, crawlID, after, limit)
+		return f.db.QueryContext(ctx, `SELECT p.id, u.request_key, COALESCE(fa.status_code, 0), cu.depth, COALESCE(p.title,''), COALESCE(p.meta_description,''), COALESCE(p.canonical_url,''), COALESCE(p.robots_directives,''), COALESCE(p.language,''), p.text_length, COALESCE(p.content_hash,'') FROM page p JOIN crawl_url cu ON cu.id = p.crawl_url_id JOIN url u ON u.id = cu.url_id LEFT JOIN fetch_attempt fa ON fa.crawl_url_id = cu.id AND fa.attempt = cu.attempt_count WHERE cu.crawl_id = ? AND p.id > ? AND (?='' OR u.request_key LIKE ? ESCAPE '\' OR COALESCE(p.title,'') LIKE ? ESCAPE '\') ORDER BY p.id LIMIT ?`, crawlID, after, page.Search, search, search, limit)
 	}, func(rows *sql.Rows) (PageRecord, error) {
 		var item PageRecord
 		err := rows.Scan(&item.ID, &item.URL, &item.StatusCode, &item.Depth, &item.Title, &item.MetaDescription, &item.CanonicalURL, &item.RobotsDirectives, &item.Language, &item.TextLength, &item.ContentHash)
 		return item, err
 	}, func(item PageRecord) int64 { return item.ID })
+}
+
+func validateQuery(page contracts.PageRequest, issues bool) error {
+	if page.Sort != "" && page.Sort != "id" {
+		return errors.New("sort must be id")
+	}
+	if len(page.Search) > 500 || len(page.RuleID) > 50 {
+		return errors.New("filter is too long")
+	}
+	if !issues && (page.Severity != "" || page.RuleID != "") {
+		return errors.New("issue filters are not valid for pages")
+	}
+	if page.Severity != "" && page.Severity != "info" && page.Severity != "warning" && page.Severity != "error" {
+		return errors.New("severity is invalid")
+	}
+	return nil
+}
+func likeSearch(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, "%", `\%`)
+	value = strings.ReplaceAll(value, "_", `\_`)
+	return "%" + value + "%"
 }
 
 func listKeyset[T any](ctx context.Context, request contracts.PageRequest, query func(int64, int) (*sql.Rows, error), scan func(*sql.Rows) (T, error), id func(T) int64) (contracts.Page[T], error) {
@@ -141,7 +186,7 @@ func (f *Frontier) ListCrawls(ctx context.Context, projectID contracts.ID, page 
 	if err != nil {
 		return contracts.Page[contracts.CrawlProgress]{}, err
 	}
-	rows, err := f.db.QueryContext(ctx, `SELECT rowid, id, status, discovered_count, fetched_count, analysed_count, failed_count, updated_at, terminal_reason FROM crawl WHERE project_id = ? AND rowid > ? ORDER BY rowid LIMIT ?`, projectID, after, limit+1)
+	rows, err := f.db.QueryContext(ctx, `SELECT rowid, id, status, discovered_count, fetched_count, analysed_count, failed_count, updated_at, terminal_reason FROM crawl WHERE project_id = ? AND deleted_at IS NULL AND rowid > ? ORDER BY rowid LIMIT ?`, projectID, after, limit+1)
 	if err != nil {
 		return contracts.Page[contracts.CrawlProgress]{}, err
 	}

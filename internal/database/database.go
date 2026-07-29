@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -76,6 +77,41 @@ func (db *DB) JournalMode(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("read journal mode: %w", err)
 	}
 	return strings.ToLower(mode), nil
+}
+
+func (db *DB) Verify(ctx context.Context) error {
+	var result string
+	if err := db.sql.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result); err != nil {
+		return fmt.Errorf("integrity check: %w", err)
+	}
+	if result != "ok" {
+		return fmt.Errorf("integrity check failed: %s", result)
+	}
+	rows, err := db.sql.QueryContext(ctx, "PRAGMA foreign_key_check")
+	if err != nil {
+		return fmt.Errorf("foreign key check: %w", err)
+	}
+	defer rows.Close()
+	if rows.Next() {
+		return fmt.Errorf("foreign key check failed")
+	}
+	return rows.Err()
+}
+
+func (db *DB) Backup(ctx context.Context, destination string) error {
+	abs, err := filepath.Abs(destination)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(abs); err == nil {
+		return errors.New("backup destination already exists")
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if _, err := db.sql.ExecContext(ctx, "VACUUM INTO ?", abs); err != nil {
+		return fmt.Errorf("backup database: %w", err)
+	}
+	return nil
 }
 
 func (db *DB) migrate(ctx context.Context) error {

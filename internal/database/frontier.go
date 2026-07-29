@@ -39,7 +39,7 @@ func (f *Frontier) CreateProject(ctx context.Context, id contracts.ID, name stri
 	})
 }
 
-func (f *Frontier) CreateCrawl(ctx context.Context, crawlID, projectID contracts.ID, seed fetchpolicy.NormalizedURL, configuration contracts.CrawlConfiguration) error {
+func (f *Frontier) CreateCrawl(ctx context.Context, crawlID, projectID, profileID contracts.ID, seed fetchpolicy.NormalizedURL, configuration contracts.CrawlConfiguration) error {
 	if err := configuration.Limits.Validate(); err != nil {
 		return err
 	}
@@ -49,10 +49,17 @@ func (f *Frontier) CreateCrawl(ctx context.Context, crawlID, projectID contracts
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO crawl(id, project_id, seed_url, config_json, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 'pending', ?, ?)`, crawlID, projectID, seed.RequestKey, string(config), now, now)
+		_, err := tx.ExecContext(ctx, `INSERT INTO crawl(id, project_id, profile_id, seed_url, config_json, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`, crawlID, projectID, nullableID(profileID), seed.RequestKey, string(config), now, now)
 		return err
 	})
+}
+
+func nullableID(value contracts.ID) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 type StoredCrawl struct {

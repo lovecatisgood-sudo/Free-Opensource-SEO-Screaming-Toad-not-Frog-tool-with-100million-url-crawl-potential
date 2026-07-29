@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -18,13 +19,14 @@ import (
 const UserAgent = "SEOAuditor/0.1 (+https://github.com/seo-auditor/seo-auditor)"
 
 type Service struct {
-	db       *database.DB
-	frontier *database.Frontier
-	ctx      context.Context
-	cancel   context.CancelFunc
-	runs     sync.WaitGroup
-	mu       sync.Mutex
-	active   map[contracts.ID]bool
+	db          *database.DB
+	frontier    *database.Frontier
+	ctx         context.Context
+	cancel      context.CancelFunc
+	runs        sync.WaitGroup
+	mu          sync.Mutex
+	active      map[contracts.ID]bool
+	artifactDir string
 }
 
 func Open(ctx context.Context, dataDirectory string) (*Service, error) {
@@ -36,8 +38,20 @@ func Open(ctx context.Context, dataDirectory string) (*Service, error) {
 		return nil, err
 	}
 	serviceCtx, cancel := context.WithCancel(ctx)
-	service := &Service{db: db, frontier: database.NewFrontier(db, 1024), ctx: serviceCtx, cancel: cancel, active: make(map[contracts.ID]bool)}
+	artifactDir := filepath.Join(dataDirectory, "artifacts")
+	if err := os.MkdirAll(artifactDir, 0o700); err != nil {
+		_ = db.Close()
+		cancel()
+		return nil, err
+	}
+	service := &Service{db: db, frontier: database.NewFrontier(db, 1024), ctx: serviceCtx, cancel: cancel, active: make(map[contracts.ID]bool), artifactDir: artifactDir}
 	if err := service.frontier.RecoverInterruptedCrawls(ctx); err != nil {
+		service.frontier.Close()
+		_ = db.Close()
+		cancel()
+		return nil, err
+	}
+	if err := service.cleanupArtifacts(ctx); err != nil {
 		service.frontier.Close()
 		_ = db.Close()
 		cancel()
@@ -105,6 +119,25 @@ func (s *Service) StartCrawl(ctx context.Context, request CrawlRequest) (CrawlRe
 	return prepared.result, nil
 }
 
+func (s *Service) StartProfileCrawl(ctx context.Context, projectID, profileID contracts.ID) (CrawlResult, error) {
+	profile, err := s.frontier.GetProfile(ctx, projectID, profileID)
+	if err != nil {
+		return CrawlResult{}, err
+	}
+	prepared, err := s.buildPrepared(ctx, CrawlResult{}, profile.Configuration)
+	if err != nil {
+		return CrawlResult{}, err
+	}
+	prepared, err = s.persistPrepared(ctx, prepared, projectID, profileID)
+	if err != nil {
+		return CrawlResult{}, err
+	}
+	if err := s.launch(prepared); err != nil {
+		return CrawlResult{}, err
+	}
+	return prepared.result, nil
+}
+
 func (s *Service) launch(prepared preparedCrawl) error {
 	s.mu.Lock()
 	if s.active[prepared.result.CrawlID] {
@@ -146,6 +179,10 @@ func (s *Service) prepare(ctx context.Context, request CrawlRequest) (preparedCr
 		IncludeQueryRegex: request.IncludeQueryRegex, ExcludeQueryRegex: request.ExcludeQueryRegex,
 		UserAgent: UserAgent, RenderingMode: "raw", Limits: request.Limits,
 	}
+	configuration, err = validateConfiguration(configuration)
+	if err != nil {
+		return preparedCrawl{}, err
+	}
 	result := CrawlResult{}
 	prepared, err := s.buildPrepared(ctx, result, configuration)
 	if err != nil {
@@ -155,21 +192,28 @@ func (s *Service) prepare(ctx context.Context, request CrawlRequest) (preparedCr
 	if err != nil {
 		return preparedCrawl{}, err
 	}
-	crawlID, err := contracts.NewID("crawl")
-	if err != nil {
-		return preparedCrawl{}, err
-	}
 	if err := s.frontier.CreateProject(ctx, projectID, request.ProjectName); err != nil {
 		prepared.transport.CloseIdleConnections()
 		return preparedCrawl{}, err
 	}
-	if err := s.frontier.CreateCrawl(ctx, crawlID, projectID, seed, configuration); err != nil {
+	return s.persistPrepared(ctx, prepared, projectID, "")
+}
+
+func (s *Service) persistPrepared(ctx context.Context, prepared preparedCrawl, projectID, profileID contracts.ID) (preparedCrawl, error) {
+	crawlID, err := contracts.NewID("crawl")
+	if err != nil {
+		prepared.transport.CloseIdleConnections()
+		return preparedCrawl{}, err
+	}
+	seed := prepared.seed
+	configuration := prepared.config
+	if err := s.frontier.CreateCrawl(ctx, crawlID, projectID, profileID, seed, configuration); err != nil {
 		prepared.transport.CloseIdleConnections()
 		return preparedCrawl{}, err
 	}
 	if _, err := s.frontier.Enqueue(ctx, database.Discovery{
 		CrawlID: crawlID, ProjectID: projectID, URL: seed, Depth: 0,
-		DiscoveryKind: "seed", MaximumURLs: request.Limits.MaximumURLs,
+		DiscoveryKind: "seed", MaximumURLs: configuration.Limits.MaximumURLs,
 	}); err != nil {
 		prepared.transport.CloseIdleConnections()
 		return preparedCrawl{}, err
@@ -286,6 +330,15 @@ func (s *Service) ListPages(ctx context.Context, crawlID contracts.ID, page cont
 }
 func (s *Service) ListIssues(ctx context.Context, crawlID contracts.ID, page contracts.PageRequest) (contracts.Page[database.IssueRecord], error) {
 	return s.frontier.ListIssues(ctx, crawlID, page)
+}
+func (s *Service) ListLinks(ctx context.Context, crawlID contracts.ID, page contracts.PageRequest) (contracts.Page[database.LinkRecord], error) {
+	return s.frontier.ListLinks(ctx, crawlID, page)
+}
+func (s *Service) GetPage(ctx context.Context, crawlID contracts.ID, pageID int64) (database.PageDetail, error) {
+	return s.frontier.GetPage(ctx, crawlID, pageID)
+}
+func (s *Service) CompareCrawls(ctx context.Context, baseID, targetID contracts.ID) (database.CrawlComparison, error) {
+	return s.frontier.CompareCrawls(ctx, baseID, targetID)
 }
 func (s *Service) Cancel(ctx context.Context, crawlID contracts.ID) error {
 	return s.frontier.RequestCancel(ctx, crawlID)

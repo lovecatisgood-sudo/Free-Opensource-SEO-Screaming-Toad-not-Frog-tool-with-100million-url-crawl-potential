@@ -54,7 +54,7 @@ func TestEngineCrawlsBoundedGraphOnce(t *testing.T) {
 	limits.GlobalConcurrency = 2
 	limits.MinimumHostDelay = 0
 	configuration := contracts.CrawlConfiguration{SeedURL: seed.RequestKey, AllowedHosts: []string{seed.URL.Hostname()}, UserAgent: "test", RenderingMode: "raw", Limits: limits}
-	if err := frontier.CreateCrawl(ctx, crawlID, projectID, seed, configuration); err != nil {
+	if err := frontier.CreateCrawl(ctx, crawlID, projectID, "", seed, configuration); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := frontier.Enqueue(ctx, database.Discovery{CrawlID: crawlID, ProjectID: projectID, URL: seed, DiscoveryKind: "seed", MaximumURLs: limits.MaximumURLs}); err != nil {

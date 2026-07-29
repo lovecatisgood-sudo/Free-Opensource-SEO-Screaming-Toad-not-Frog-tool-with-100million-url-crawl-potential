@@ -1,8 +1,8 @@
 export interface CrawlProgress { crawl_id: string; status: string; discovered: number; queued: number; fetched: number; analysed: number; failed: number; terminal_reason?: string }
 export interface CrawlResult { project_id: string; crawl_id: string; progress: CrawlProgress }
-export interface Summary { crawl_id: string; status: string; Discovered: number; Fetched: number; Analysed: number; Failed: number; issues_by_severity: Record<string, number>; responses_by_class: Record<string, number> }
-export interface PageRecord { id: number; URL: string; Title: string; StatusCode: number; Depth: number; CanonicalURL: string }
-export interface IssueRecord { id: number; rule_id: string; severity: string; EvidenceJSON: string }
+export interface Summary { crawl_id: string; status: string; discovered: number; fetched: number; analysed: number; failed: number; issues_by_severity: Record<string, number>; responses_by_class: Record<string, number> }
+export interface PageRecord { id: number; url: string; title: string; status_code: number; depth: number; canonical_url: string }
+export interface IssueRecord { id: number; rule_id: string; severity: string; evidence_json: string }
 export interface Page<T> { items: T[]; next_cursor?: string }
 
 let csrfToken = "";
@@ -18,8 +18,9 @@ export async function bootstrap(): Promise<void> { const value = await request<{
 export function startCrawl(input: { url: string; name: string; allow_subdomains: boolean; maximum_urls: number }): Promise<CrawlResult> { return request("/api/v1/crawls", { method: "POST", body: JSON.stringify(input) }); }
 export function crawlStatus(id: string): Promise<CrawlProgress> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/status`); }
 export function auditSummary(id: string): Promise<Summary> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/summary`); }
-export function pages(id: string): Promise<Page<PageRecord>> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/pages?limit=100`); }
-export function issues(id: string): Promise<Page<IssueRecord>> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/issues?limit=100`); }
+export function pages(id: string, search = ""): Promise<Page<PageRecord>> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/pages?limit=100&search=${encodeURIComponent(search)}`); }
+export function issues(id: string, search = ""): Promise<Page<IssueRecord>> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/issues?limit=100&search=${encodeURIComponent(search)}`); }
+export function createExport(crawlID: string, dataset: "pages" | "issues" | "workbook", format: "csv" | "ndjson" | "xlsx") { return request<{ artifact_id: string; path: string }>("/api/v1/exports", { method: "POST", body: JSON.stringify({ crawl_id: crawlID, dataset, format }) }); }
 export function cancelCrawl(id: string): Promise<void> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/cancel`, { method: "POST" }); }
 export function pauseCrawl(id: string): Promise<void> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/pause`, { method: "POST" }); }
 export function resumeCrawl(id: string): Promise<void> { return request(`/api/v1/crawls/${encodeURIComponent(id)}/resume`, { method: "POST" }); }

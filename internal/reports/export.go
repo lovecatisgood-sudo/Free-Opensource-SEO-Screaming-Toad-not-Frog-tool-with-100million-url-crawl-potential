@@ -66,6 +66,55 @@ func IssuesNDJSON(ctx context.Context, source QuerySource, crawlID contracts.ID,
 	}
 }
 
+func PagesNDJSON(ctx context.Context, source QuerySource, crawlID contracts.ID, output io.Writer) error {
+	encoder := json.NewEncoder(output)
+	cursor := ""
+	for {
+		page, err := source.ListPages(ctx, crawlID, contracts.PageRequest{Cursor: cursor, Limit: 1000})
+		if err != nil {
+			return err
+		}
+		for _, item := range page.Items {
+			if err := encoder.Encode(item); err != nil {
+				return err
+			}
+		}
+		if page.NextCursor == "" {
+			return nil
+		}
+		cursor = page.NextCursor
+	}
+}
+
+func IssuesCSV(ctx context.Context, source QuerySource, crawlID contracts.ID, output io.Writer) error {
+	writer := csv.NewWriter(output)
+	if err := writer.Write([]string{"id", "rule_id", "rule_version", "subject_type", "subject_id", "severity", "evidence_json", "created_at"}); err != nil {
+		return err
+	}
+	cursor := ""
+	for {
+		page, err := source.ListIssues(ctx, crawlID, contracts.PageRequest{Cursor: cursor, Limit: 1000})
+		if err != nil {
+			return err
+		}
+		for _, item := range page.Items {
+			row := []string{fmt.Sprint(item.ID), item.RuleID, fmt.Sprint(item.RuleVersion), item.SubjectType, item.SubjectID, item.Severity, item.EvidenceJSON, item.CreatedAt}
+			for index := range row {
+				row[index] = spreadsheetSafe(row[index])
+			}
+			if err := writer.Write(row); err != nil {
+				return err
+			}
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	writer.Flush()
+	return writer.Error()
+}
+
 func spreadsheetSafe(value string) string {
 	trimmed := strings.TrimLeft(value, "\t\r\n ")
 	if trimmed != "" && strings.ContainsRune("=+-@", rune(trimmed[0])) {
