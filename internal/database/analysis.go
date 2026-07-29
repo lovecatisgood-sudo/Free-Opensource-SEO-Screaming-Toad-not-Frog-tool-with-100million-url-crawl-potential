@@ -26,16 +26,22 @@ type AnalysisCommit struct {
 	Issues    []rules.Issue
 }
 
-// CommitAnalyses atomically persists a bounded fetched/analysed worker batch,
-// amortising WAL transaction overhead without weakening per-URL state guards.
-func (f *Frontier) CommitAnalyses(ctx context.Context, crawlID contracts.ID, commits []AnalysisCommit) error {
+// CommitAnalysesAndDiscoveries atomically persists a bounded worker batch and
+// all accepted child discoveries. A crash can therefore never retain an
+// analysed page while losing the frontier work derived from that page.
+func (f *Frontier) CommitAnalysesAndDiscoveries(ctx context.Context, crawlID contracts.ID, commits []AnalysisCommit, discoveries []Discovery) (int, error) {
 	if len(commits) == 0 {
-		return nil
+		return f.EnqueueBatch(ctx, discoveries)
 	}
 	if len(commits) > 1000 {
-		return fmt.Errorf("analysis batch exceeds 1000 pages")
+		return 0, fmt.Errorf("analysis batch exceeds 1000 pages")
 	}
-	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
+	if len(discoveries) > 20_000 {
+		return 0, fmt.Errorf("discovery batch exceeds 20000 URLs")
+	}
+	inserted := 0
+	limitReached := false
+	err := f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		for _, commit := range commits {
 			if err := completeFetchTx(ctx, tx, crawlID, commit.Fetch); err != nil {
 				return err
@@ -44,8 +50,57 @@ func (f *Frontier) CommitAnalyses(ctx context.Context, crawlID contracts.ID, com
 				return err
 			}
 		}
+		if len(discoveries) == 0 {
+			return nil
+		}
+		first := discoveries[0]
+		var current int64
+		if err := tx.QueryRowContext(ctx, "SELECT discovered_count FROM crawl WHERE id=?", first.CrawlID).Scan(&current); err != nil {
+			return err
+		}
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		for _, discovery := range discoveries {
+			if discovery.CrawlID != first.CrawlID || discovery.ProjectID != first.ProjectID || discovery.MaximumURLs != first.MaximumURLs || discovery.Depth < 0 || discovery.DiscoveryKind == "" {
+				return fmt.Errorf("discovery batch metadata is inconsistent")
+			}
+			var urlID int64
+			if _, err := tx.ExecContext(ctx, `INSERT INTO url(project_id,request_key,original_url,scheme,host,port,path,query,created_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(project_id,request_key) DO NOTHING`, discovery.ProjectID, discovery.URL.RequestKey, discovery.URL.URL.String(), discovery.URL.URL.Scheme, discovery.URL.URL.Hostname(), discovery.URL.URL.Port(), discovery.URL.URL.EscapedPath(), discovery.URL.URL.RawQuery, now); err != nil {
+				return err
+			}
+			if err := tx.QueryRowContext(ctx, `SELECT id FROM url WHERE project_id=? AND request_key=?`, discovery.ProjectID, discovery.URL.RequestKey).Scan(&urlID); err != nil {
+				return err
+			}
+			var exists int
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM crawl_url WHERE crawl_id=? AND url_id=?`, discovery.CrawlID, urlID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists != 0 {
+				continue
+			}
+			if current+int64(inserted) >= discovery.MaximumURLs {
+				limitReached = true
+				break
+			}
+			result, err := tx.ExecContext(ctx, `INSERT INTO crawl_url(crawl_id,url_id,state,depth,discovered_from_id,discovery_kind,created_at,updated_at) VALUES (?,?,'queued',?,?,?,?,?)`, discovery.CrawlID, urlID, discovery.Depth, discovery.DiscoveredFrom, discovery.DiscoveryKind, now, now)
+			if err != nil {
+				return err
+			}
+			rows, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			inserted += int(rows)
+		}
+		if inserted > 0 {
+			_, err := tx.ExecContext(ctx, `UPDATE crawl SET discovered_count=discovered_count+?,updated_at=? WHERE id=?`, inserted, now, first.CrawlID)
+			return err
+		}
 		return nil
 	})
+	if err == nil && limitReached {
+		err = ErrURLLimitReached
+	}
+	return inserted, err
 }
 
 func saveAnalysisTx(ctx context.Context, tx *sql.Tx, crawlID, projectID contracts.ID, lease Lease, page extractor.Page, issues []rules.Issue) error {

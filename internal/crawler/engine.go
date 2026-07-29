@@ -74,6 +74,9 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 	if request.RenderingMode == "rendered" && e.Renderer == nil {
 		return errors.New("rendered mode requires a renderer")
 	}
+	if err := e.reconcileStoredDiscoveries(ctx, request); err != nil {
+		return err
+	}
 	if request.NearDuplicateDistance < 0 || request.NearDuplicateDistance > 3 {
 		return errors.New("near-duplicate distance must be between 0 and 3")
 	}
@@ -207,6 +210,39 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 	}
 }
 
+func (e *Engine) reconcileStoredDiscoveries(ctx context.Context, request RunRequest) error {
+	for {
+		missing, err := e.Frontier.MissingLinkDiscoveries(ctx, request.CrawlID, 10_000)
+		if err != nil {
+			return err
+		}
+		if len(missing) == 0 {
+			return nil
+		}
+		discoveries := make([]database.Discovery, 0, len(missing))
+		for _, item := range missing {
+			if item.Depth > request.Limits.MaximumDepth {
+				continue
+			}
+			normalized, err := fetchpolicy.NormalizeURL(item.URL)
+			if err != nil || e.Scope.Evaluate(normalized) != nil || DetectTrap(normalized) != "" {
+				continue
+			}
+			parent := item.DiscoveredFromID
+			discoveries = append(discoveries, database.Discovery{CrawlID: request.CrawlID, ProjectID: request.ProjectID, URL: normalized, Depth: item.Depth, DiscoveryKind: "recovered_link", DiscoveredFrom: &parent, MaximumURLs: request.Limits.MaximumURLs})
+		}
+		if len(discoveries) == 0 {
+			return nil
+		}
+		if _, err := e.Frontier.EnqueueBatch(ctx, discoveries); err != nil && !errors.Is(err, database.ErrURLLimitReached) {
+			return err
+		}
+		if len(missing) < 10_000 {
+			return nil
+		}
+	}
+}
+
 func (e *Engine) commitRawBatch(ctx context.Context, request RunRequest, results []workResult, maxLinks int) error {
 	commits := make([]database.AnalysisCommit, 0, len(results))
 	discoveries := make([]database.Discovery, 0, len(results)*8)
@@ -269,10 +305,7 @@ func (e *Engine) commitRawBatch(ctx context.Context, request RunRequest, results
 			discoveries = append(discoveries, database.Discovery{CrawlID: request.CrawlID, ProjectID: request.ProjectID, URL: normalized, Depth: result.lease.Depth + 1, DiscoveryKind: "image", DiscoveredFrom: &parent, MaximumURLs: request.Limits.MaximumURLs})
 		}
 	}
-	if err := e.Frontier.CommitAnalyses(ctx, request.CrawlID, commits); err != nil {
-		return err
-	}
-	_, err := e.Frontier.EnqueueBatch(ctx, discoveries)
+	_, err := e.Frontier.CommitAnalysesAndDiscoveries(ctx, request.CrawlID, commits, discoveries)
 	return err
 }
 
