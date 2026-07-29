@@ -13,6 +13,9 @@ import (
 type PinnedDialer struct {
 	Resolver Resolver
 	Dialer   net.Dialer
+	// Dial, when set, receives only an approved numeric address. It exists for
+	// deterministic fixture networking; production leaves it nil.
+	Dial func(context.Context, string, string) (net.Conn, error)
 }
 
 func (d *PinnedDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
@@ -32,7 +35,13 @@ func (d *PinnedDialer) DialContext(ctx context.Context, network, address string)
 	}
 	var lastErr error
 	for _, approved := range resolution.Addresses {
-		conn, err := d.Dialer.DialContext(ctx, network, net.JoinHostPort(approved.String(), port))
+		approvedAddress := net.JoinHostPort(approved.String(), port)
+		var conn net.Conn
+		if d.Dial != nil {
+			conn, err = d.Dial(ctx, network, approvedAddress)
+		} else {
+			conn, err = d.Dialer.DialContext(ctx, network, approvedAddress)
+		}
 		if err == nil {
 			return conn, nil
 		}
@@ -42,8 +51,13 @@ func (d *PinnedDialer) DialContext(ctx context.Context, network, address string)
 }
 
 func NewHTTPTransport(resolver Resolver) *http.Transport {
+	return NewHTTPTransportWithDial(resolver, nil)
+}
+
+func NewHTTPTransportWithDial(resolver Resolver, dial func(context.Context, string, string) (net.Conn, error)) *http.Transport {
 	dialer := &PinnedDialer{
 		Resolver: resolver,
+		Dial:     dial,
 		Dialer: net.Dialer{
 			Timeout:   10 * time.Second,
 			KeepAlive: 30 * time.Second,
@@ -51,6 +65,7 @@ func NewHTTPTransport(resolver Resolver) *http.Transport {
 	}
 	return &http.Transport{
 		Proxy:                 nil,
+		DisableCompression:    true,
 		DialContext:           dialer.DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,

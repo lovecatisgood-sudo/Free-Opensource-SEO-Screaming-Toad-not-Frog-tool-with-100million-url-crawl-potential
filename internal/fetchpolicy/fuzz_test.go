@@ -41,4 +41,3 @@ func FuzzClassifyIP(f *testing.F) {
 		}
 	})
 }
-

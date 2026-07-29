@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -19,7 +20,8 @@ import (
 var migrationFiles embed.FS
 
 type DB struct {
-	sql *sql.DB
+	sql  *sql.DB
+	path string
 }
 
 func Open(ctx context.Context, path string) (*DB, error) {
@@ -37,7 +39,7 @@ func Open(ctx context.Context, path string) (*DB, error) {
 	sqldb.SetMaxOpenConns(8)
 	sqldb.SetMaxIdleConns(4)
 	sqldb.SetConnMaxIdleTime(5 * time.Minute)
-	db := &DB{sql: sqldb}
+	db := &DB{sql: sqldb, path: abs}
 	if err := sqldb.PingContext(ctx); err != nil {
 		_ = sqldb.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
@@ -52,6 +54,21 @@ func Open(ctx context.Context, path string) (*DB, error) {
 func (db *DB) Close() error { return db.sql.Close() }
 
 func (db *DB) SQL() *sql.DB { return db.sql }
+
+func (db *DB) StorageBytes() (int64, error) {
+	var total int64
+	for _, path := range []string{db.path, db.path + "-wal", db.path + "-shm"} {
+		info, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return 0, fmt.Errorf("stat database storage: %w", err)
+		}
+		total += info.Size()
+	}
+	return total, nil
+}
 
 func (db *DB) JournalMode(ctx context.Context) (string, error) {
 	var mode string

@@ -1,0 +1,109 @@
+package database
+
+import (
+	"context"
+	"errors"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/seo-auditor/seo-auditor/internal/contracts"
+	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
+)
+
+func testFrontier(t *testing.T) (*Frontier, contracts.ID, contracts.ID) {
+	t.Helper()
+	db, err := Open(context.Background(), filepath.Join(t.TempDir(), "auditor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	frontier := NewFrontier(db, 32)
+	t.Cleanup(frontier.Close)
+	projectID := contracts.ID("project_test")
+	crawlID := contracts.ID("crawl_test")
+	if err := frontier.CreateProject(context.Background(), projectID, "Test"); err != nil {
+		t.Fatal(err)
+	}
+	seed, _ := fetchpolicy.NormalizeURL("https://example.com/")
+	if err := frontier.CreateCrawl(context.Background(), crawlID, projectID, seed, contracts.DefaultCrawlLimits()); err != nil {
+		t.Fatal(err)
+	}
+	return frontier, projectID, crawlID
+}
+
+func TestFrontierDeduplicatesAndEnforcesLimit(t *testing.T) {
+	t.Parallel()
+	frontier, projectID, crawlID := testFrontier(t)
+	ctx := context.Background()
+	first, _ := fetchpolicy.NormalizeURL("https://example.com/a")
+	inserted, err := frontier.Enqueue(ctx, Discovery{CrawlID: crawlID, ProjectID: projectID, URL: first, DiscoveryKind: "seed", MaximumURLs: 1})
+	if err != nil || !inserted {
+		t.Fatalf("first enqueue = %v, %v", inserted, err)
+	}
+	inserted, err = frontier.Enqueue(ctx, Discovery{CrawlID: crawlID, ProjectID: projectID, URL: first, DiscoveryKind: "link", MaximumURLs: 1})
+	if err != nil || inserted {
+		t.Fatalf("duplicate enqueue = %v, %v", inserted, err)
+	}
+	second, _ := fetchpolicy.NormalizeURL("https://example.com/b")
+	_, err = frontier.Enqueue(ctx, Discovery{CrawlID: crawlID, ProjectID: projectID, URL: second, DiscoveryKind: "link", MaximumURLs: 1})
+	if !errors.Is(err, ErrURLLimitReached) {
+		t.Fatalf("limit error = %v", err)
+	}
+}
+
+func TestFrontierLeaseRecoversAndCompletes(t *testing.T) {
+	t.Parallel()
+	frontier, projectID, crawlID := testFrontier(t)
+	ctx := context.Background()
+	target, _ := fetchpolicy.NormalizeURL("https://example.com/")
+	_, err := frontier.Enqueue(ctx, Discovery{CrawlID: crawlID, ProjectID: projectID, URL: target, DiscoveryKind: "seed", MaximumURLs: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leases, err := frontier.Lease(ctx, crawlID, "worker-one", 1, time.Nanosecond)
+	if err != nil || len(leases) != 1 {
+		t.Fatalf("lease = %+v, %v", leases, err)
+	}
+	time.Sleep(time.Millisecond)
+	recovered, err := frontier.Lease(ctx, crawlID, "worker-two", 1, time.Minute)
+	if err != nil || len(recovered) != 1 || recovered[0].Attempt != 2 {
+		t.Fatalf("recovered = %+v, %v", recovered, err)
+	}
+	now := time.Now().UTC()
+	if err := frontier.CompleteFetch(ctx, crawlID, FetchCompletion{Lease: recovered[0], StatusCode: 200, ContentType: "text/html", StartedAt: now, FinishedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	progress, err := frontier.Progress(ctx, crawlID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.Discovered != 1 || progress.Fetched != 1 || progress.Queued != 0 {
+		t.Fatalf("unexpected progress: %+v", progress)
+	}
+}
+
+func TestFrontierControlTransitions(t *testing.T) {
+	t.Parallel()
+	frontier, _, crawlID := testFrontier(t)
+	ctx := context.Background()
+	if err := frontier.SetStatus(ctx, crawlID, []contracts.CrawlStatus{contracts.CrawlPending}, contracts.CrawlRunning, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := frontier.RequestPause(ctx, crawlID); err != nil {
+		t.Fatal(err)
+	}
+	if err := frontier.SetStatus(ctx, crawlID, []contracts.CrawlStatus{contracts.CrawlPausing}, contracts.CrawlPaused, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := frontier.RequestCancel(ctx, crawlID); err != nil {
+		t.Fatal(err)
+	}
+	if err := frontier.SetStatus(ctx, crawlID, []contracts.CrawlStatus{contracts.CrawlCancelling}, contracts.CrawlCancelled, "user_cancelled"); err != nil {
+		t.Fatal(err)
+	}
+	progress, err := frontier.Progress(ctx, crawlID)
+	if err != nil || progress.Status != contracts.CrawlCancelled {
+		t.Fatalf("progress = %+v, err = %v", progress, err)
+	}
+}

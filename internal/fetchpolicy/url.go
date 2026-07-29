@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 
 	"golang.org/x/net/idna"
@@ -45,6 +46,12 @@ func NormalizeURL(raw string) (NormalizedURL, error) {
 		}
 	}
 	port := u.Port()
+	if port != "" {
+		value, portErr := strconv.ParseUint(port, 10, 16)
+		if portErr != nil || value == 0 {
+			return NormalizedURL{}, errors.New("URL port is invalid")
+		}
+	}
 	if (u.Scheme == "http" && port == "80") || (u.Scheme == "https" && port == "443") {
 		port = ""
 	}
@@ -68,7 +75,11 @@ func NormalizeURL(raw string) (NormalizedURL, error) {
 			return NormalizedURL{}, fmt.Errorf("normalize path: %w", decodeErr)
 		}
 		u.Path = decoded
-		u.RawPath = ""
+		if (&url.URL{Path: decoded}).EscapedPath() == cleaned {
+			u.RawPath = ""
+		} else {
+			u.RawPath = cleaned
+		}
 	}
 	query := u.Query()
 	for key, values := range query {

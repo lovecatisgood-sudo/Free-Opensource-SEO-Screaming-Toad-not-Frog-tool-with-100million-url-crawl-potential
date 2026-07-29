@@ -1,0 +1,84 @@
+package crawler
+
+import (
+	"context"
+	"net/http"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/seo-auditor/seo-auditor/internal/contracts"
+	"github.com/seo-auditor/seo-auditor/internal/database"
+	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
+)
+
+type mapFetcher struct {
+	mu    sync.Mutex
+	pages map[string]string
+	calls map[string]int
+}
+
+func (f *mapFetcher) Fetch(_ context.Context, raw string) (fetchpolicy.FetchResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls[raw]++
+	body := f.pages[raw]
+	now := time.Now().UTC()
+	return fetchpolicy.FetchResult{
+		RequestedURL: raw, FinalURL: raw, StatusCode: http.StatusOK,
+		Header: http.Header{"Content-Type": []string{"text/html"}}, ContentType: "text/html",
+		Body: []byte(body), CompressedBytes: int64(len(body)), DecodedBytes: int64(len(body)),
+		StartedAt: now, FinishedAt: now,
+	}, nil
+}
+
+func TestEngineCrawlsBoundedGraphOnce(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "auditor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	frontier := database.NewFrontier(db, 32)
+	t.Cleanup(frontier.Close)
+	projectID := contracts.ID("project_engine")
+	crawlID := contracts.ID("crawl_engine")
+	if err := frontier.CreateProject(ctx, projectID, "Engine"); err != nil {
+		t.Fatal(err)
+	}
+	seed, _ := fetchpolicy.NormalizeURL("https://example.com/")
+	limits := contracts.DefaultCrawlLimits()
+	limits.MaximumURLs = 10
+	limits.GlobalConcurrency = 2
+	limits.MinimumHostDelay = 0
+	if err := frontier.CreateCrawl(ctx, crawlID, projectID, seed, limits); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := frontier.Enqueue(ctx, database.Discovery{CrawlID: crawlID, ProjectID: projectID, URL: seed, DiscoveryKind: "seed", MaximumURLs: limits.MaximumURLs}); err != nil {
+		t.Fatal(err)
+	}
+	scope, _ := fetchpolicy.CompileScope(fetchpolicy.ScopeConfig{AllowedHosts: []string{"example.com"}})
+	fetcher := &mapFetcher{pages: map[string]string{
+		"https://example.com/":  `<a href="/a">a</a><a href="/b">b</a><a href="/a#again">duplicate</a>`,
+		"https://example.com/a": `<a href="/b">b</a>`,
+		"https://example.com/b": `done`,
+	}, calls: make(map[string]int)}
+	engine := &Engine{Frontier: frontier, Fetcher: fetcher, Scope: scope, LeaseTime: time.Minute}
+	if err := engine.Run(ctx, RunRequest{CrawlID: crawlID, ProjectID: projectID, Limits: limits, WorkerID: "test"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	progress, err := frontier.Progress(ctx, crawlID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.Status != contracts.CrawlCompleted || progress.Discovered != 3 || progress.Fetched != 3 || progress.Queued != 0 {
+		t.Fatalf("unexpected progress: %+v", progress)
+	}
+	for target, calls := range fetcher.calls {
+		if calls != 1 {
+			t.Errorf("%s fetched %d times", target, calls)
+		}
+	}
+}
