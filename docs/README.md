@@ -14,6 +14,8 @@ This directory is the approved planning source of truth for the secure, local-fi
 8. [Security model](./SECURITY_MODEL.md) — trust boundaries, controls and residual risks.
 9. [Audit rule catalog](./RULE_CATALOG.md) — versioned rule coverage and limitations.
 10. [Release and reproducibility](./RELEASE.md) — cross-platform artifacts, SBOM, checksums and signing limits.
+11. [Risk register](./RISK_REGISTER.md) — owned security, integrity, quality, release and scale risks.
+12. [Closed beta protocol](./BETA_PROTOCOL.md) — authorised-site validation and stable-release stop conditions.
 
 ## Document precedence
 
