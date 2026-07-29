@@ -46,6 +46,8 @@ type Backend interface {
 	ListProfiles(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.ProfileRecord], error)
 	PreviewScope(context.Context, contracts.CrawlConfiguration, []string) ([]application.ScopeDecision, error)
 	StartProfileCrawl(context.Context, contracts.ID, contracts.ID) (application.CrawlResult, error)
+	ListCrawls(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[contracts.CrawlProgress], error)
+	ExplainIssue(context.Context, contracts.ID, int64) (application.IssueExplanation, error)
 	Cancel(context.Context, contracts.ID) error
 	Pause(context.Context, contracts.ID) error
 	Resume(context.Context, contracts.ID) error
@@ -247,6 +249,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		respond(w, value, err)
 		return
 	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "crawls" && parts[4] == "issues" && r.Method == http.MethodGet {
+		issueID, err := strconv.ParseInt(parts[5], 10, 64)
+		if err != nil || issueID < 1 {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "issue ID is invalid")
+			return
+		}
+		value, err := h.backend.ExplainIssue(r.Context(), contracts.ID(parts[3]), issueID)
+		respond(w, value, err)
+		return
+	}
 	if len(parts) != 5 || parts[0] != "api" || parts[1] != "v1" || parts[2] != "crawls" {
 		writeError(w, http.StatusNotFound, "not_found", "route not found")
 		return
@@ -434,6 +446,16 @@ func (h *Handler) serveProjectRoute(w http.ResponseWriter, r *http.Request, part
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"decisions": value})
+		return true
+	}
+	if len(parts) == 5 && parts[4] == "crawls" && r.Method == http.MethodGet {
+		page, err := pageRequest(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			return true
+		}
+		value, err := h.backend.ListCrawls(r.Context(), projectID, page)
+		respond(w, value, err)
 		return true
 	}
 	if len(parts) == 5 && parts[4] == "crawls" && r.Method == http.MethodPost {

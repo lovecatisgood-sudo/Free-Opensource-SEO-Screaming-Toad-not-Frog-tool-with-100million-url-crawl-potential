@@ -18,9 +18,13 @@ const (
 )
 
 type Metadata struct {
-	ID, Title, Category, Remediation, Limitations string
-	Version                                       int
-	DefaultSeverity                               Severity
+	ID              string   `json:"id"`
+	Title           string   `json:"title"`
+	Category        string   `json:"category"`
+	Remediation     string   `json:"remediation"`
+	Limitations     string   `json:"limitations"`
+	Version         int      `json:"version"`
+	DefaultSeverity Severity `json:"default_severity"`
 }
 type Issue struct {
 	RuleID      string         `json:"rule_id"`

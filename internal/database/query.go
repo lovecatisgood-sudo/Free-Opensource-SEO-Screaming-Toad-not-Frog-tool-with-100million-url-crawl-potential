@@ -98,6 +98,11 @@ func (f *Frontier) ListIssues(ctx context.Context, crawlID contracts.ID, page co
 		return item, err
 	}, func(item IssueRecord) int64 { return item.ID })
 }
+func (f *Frontier) GetIssue(ctx context.Context, crawlID contracts.ID, id int64) (IssueRecord, error) {
+	var item IssueRecord
+	err := f.db.QueryRowContext(ctx, `SELECT id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at FROM issue WHERE crawl_id=? AND id=?`, crawlID, id).Scan(&item.ID, &item.RuleID, &item.RuleVersion, &item.SubjectType, &item.SubjectID, &item.Severity, &item.EvidenceJSON, &item.CreatedAt)
+	return item, err
+}
 
 func (f *Frontier) ListPages(ctx context.Context, crawlID contracts.ID, page contracts.PageRequest) (contracts.Page[PageRecord], error) {
 	if err := validateQuery(page, false); err != nil {

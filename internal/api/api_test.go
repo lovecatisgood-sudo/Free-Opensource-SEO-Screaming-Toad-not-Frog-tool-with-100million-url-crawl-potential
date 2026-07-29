@@ -71,6 +71,12 @@ func (*fakeBackend) PreviewScope(context.Context, contracts.CrawlConfiguration, 
 func (*fakeBackend) StartProfileCrawl(context.Context, contracts.ID, contracts.ID) (application.CrawlResult, error) {
 	return application.CrawlResult{}, nil
 }
+func (*fakeBackend) ListCrawls(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[contracts.CrawlProgress], error) {
+	return contracts.Page[contracts.CrawlProgress]{Items: []contracts.CrawlProgress{}}, nil
+}
+func (*fakeBackend) ExplainIssue(context.Context, contracts.ID, int64) (application.IssueExplanation, error) {
+	return application.IssueExplanation{}, nil
+}
 func (b *fakeBackend) Cancel(context.Context, contracts.ID) error { b.cancelled = true; return nil }
 func (*fakeBackend) Pause(context.Context, contracts.ID) error    { return nil }
 func (*fakeBackend) Resume(context.Context, contracts.ID) error   { return nil }

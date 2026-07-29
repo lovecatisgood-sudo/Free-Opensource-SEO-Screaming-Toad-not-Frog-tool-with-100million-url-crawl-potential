@@ -340,6 +340,9 @@ func (s *Service) GetPage(ctx context.Context, crawlID contracts.ID, pageID int6
 func (s *Service) CompareCrawls(ctx context.Context, baseID, targetID contracts.ID) (database.CrawlComparison, error) {
 	return s.frontier.CompareCrawls(ctx, baseID, targetID)
 }
+func (s *Service) ListCrawls(ctx context.Context, projectID contracts.ID, page contracts.PageRequest) (contracts.Page[contracts.CrawlProgress], error) {
+	return s.frontier.ListCrawls(ctx, projectID, page)
+}
 func (s *Service) Cancel(ctx context.Context, crawlID contracts.ID) error {
 	return s.frontier.RequestCancel(ctx, crawlID)
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
 	"github.com/seo-auditor/seo-auditor/internal/database"
 	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
+	"github.com/seo-auditor/seo-auditor/internal/rules"
 )
 
 func (s *Service) CreateProject(ctx context.Context, name string) (database.ProjectRecord, error) {
@@ -122,4 +123,22 @@ func (s *Service) PreviewScope(ctx context.Context, configuration contracts.Craw
 		result = append(result, item)
 	}
 	return result, nil
+}
+
+type IssueExplanation struct {
+	Issue database.IssueRecord `json:"issue"`
+	Rule  rules.Metadata       `json:"rule"`
+}
+
+func (s *Service) ExplainIssue(ctx context.Context, crawlID contracts.ID, id int64) (IssueExplanation, error) {
+	issue, err := s.frontier.GetIssue(ctx, crawlID, id)
+	if err != nil {
+		return IssueExplanation{}, err
+	}
+	for _, metadata := range rules.Catalog {
+		if metadata.ID == issue.RuleID {
+			return IssueExplanation{Issue: issue, Rule: metadata}, nil
+		}
+	}
+	return IssueExplanation{}, errors.New("rule metadata is unavailable")
 }
