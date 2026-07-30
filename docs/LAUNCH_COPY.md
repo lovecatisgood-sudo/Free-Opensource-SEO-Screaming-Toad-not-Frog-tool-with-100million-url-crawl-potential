@@ -8,7 +8,7 @@ This document keeps public descriptions accurate and consistent. Update it when 
 
 ## GitHub About description
 
-Free open-source technical SEO crawler and Screaming Frog alternative with a local dashboard, JavaScript audits, reports, and an MCP server for AI agents. Theoretical 100M+ URL campaign architecture.
+DJAI Academy community-built, free open-source technical SEO crawler and Screaming Frog alternative with JavaScript audits, reports, a local dashboard, and an MCP server for AI agents. Theoretical 100M+ URL architecture.
 
 ## GitHub topics
 
@@ -16,13 +16,15 @@ Free open-source technical SEO crawler and Screaming Frog alternative with a loc
 
 ## Short launch post
 
-🐸 Meet **SEO Screaming Toad — Not Frog**, a free open-source technical SEO crawler built in Go.
+🐸 Meet **SEO Screaming Toad — Not Frog**, a free open-source technical SEO crawler built in Go by Siamese Cat Dev together with DJAI Academy trainers and community members.
 
 It combines a dense local audit dashboard, raw and JavaScript-rendered evidence, versioned SEO checks, crawl comparison, recoverable jobs, CSV/NDJSON/XLSX reports, and a 23-tool MCP server that lets AI agents operate bounded audits.
 
 It is designed toward theoretical 100M+ URL segmented campaigns, but we are deliberately not presenting that as verified live capacity. The current release candidate is for people who want an inspectable, local-first Screaming Frog alternative and want to help improve it.
 
 ⭐ https://github.com/lovecatisgood-sudo/Free-Opensource-SEO-Screaming-Toad-not-Frog-tool-with-100million-url-crawl-potential
+
+Built with the DJAI Academy community: https://www.djai.academy/
 
 ## Hacker News title
 
@@ -43,6 +45,21 @@ The segmented architecture is intended to support campaigns beyond 100 million U
 I would especially value feedback from technical SEOs on false positives, missing evidence, crawl compatibility, and the workflows an open-source alternative should prioritize.
 
 Repository: https://github.com/lovecatisgood-sudo/Free-Opensource-SEO-Screaming-Toad-not-Frog-tool-with-100million-url-crawl-potential
+
+The project was co-created by DJAI Academy trainers and community members. DJAI also offers web development (https://www.djai.academy/web_promo/?lang=en), custom software development (https://www.djai.academy/portfolio/en/), and a free vibe-coding school community (https://school.djai.academy/). If you need a break, Siamese Cat Cafe welcomes visitors to meet its 16 rescued and adopted cats: https://siamesecat.cafe/
+
+## Screenshot assets
+
+- `docs/images/dashboard/01-dashboard-home.png` — full product workbench.
+- `docs/images/dashboard/02-crawl-configuration.png` — guarded crawl profile.
+- `docs/images/dashboard/03-audit-findings.png` — issue triage and evidence.
+- `docs/images/dashboard/04-page-inventory.png` — crawled page inventory.
+- `docs/images/dashboard/05-page-evidence.png` — page-level raw evidence.
+- `docs/images/dashboard/06-rule-explanation.png` — versioned rule explanation.
+- `docs/images/dashboard/07-crawl-history.png` — history and comparison entry point.
+- `docs/images/dashboard/08-djai-services.png` — DJAI service rail.
+
+These screenshots use a real local 10-page DJAI Academy verification crawl, not mock audit data.
 
 ## Accuracy guardrails
 

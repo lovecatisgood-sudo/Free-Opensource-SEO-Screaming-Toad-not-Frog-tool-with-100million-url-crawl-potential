@@ -20,6 +20,8 @@ The public interface is now branded **SEO Screaming Toad — Not Frog**, with **
 
 The stdio MCP server is agent-operable from a fresh workspace. Beyond the original required tools, it now exposes simplified profile creation/listing, page and link listing, crawl timeline, pause/resume and metadata-only diagnostics. MCP tool annotations label read-only, additive and open-world operations; `health_get` verifies the local API connection. Configuration and workflow guidance are in `docs/MCP.md`.
 
+The public repository README now includes eight dashboard screenshots captured from a real local DJAI Academy verification crawl, an expert-oriented product tour, DJAI Academy trainer/community co-creation credit, service links and the Siamese Cat Cafe link. During capture, a raw-only summary compatibility bug was found and fixed: the dashboard now safely handles an absent rendering-status distribution.
+
 ## Verification evidence
 
 - Full Go test suite and `go vet` passed.

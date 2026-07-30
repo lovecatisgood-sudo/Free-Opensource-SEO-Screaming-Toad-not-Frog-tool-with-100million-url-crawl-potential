@@ -15,4 +15,10 @@ describe("local application policy", () => {
     expect(source.default).toContain("https://school.djai.academy");
     expect(source.default).toContain("https://github.com/lovecatisgood-sudo");
   });
+
+  it("keeps raw-only audit summaries compatible with an absent rendering distribution", async () => {
+    const source = await import("./App.tsx?raw");
+    expect(source.default).toContain("summary.rendering_by_status ?? {}");
+    expect(source.default).toContain("summary.rendering_by_status?.completed ?? 0");
+  });
 });
