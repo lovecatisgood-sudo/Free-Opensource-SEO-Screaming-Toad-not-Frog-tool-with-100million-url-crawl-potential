@@ -16,6 +16,8 @@ Product development is now quality-first rather than capacity-first. `docs/QUALI
 
 The first Q1 slice is implemented in the working tree: AUD-13 detects malformed JSON-LD, structurally invalid `@type`/`@context` values, and compact structured-data types without an observed Schema.org context. Extraction now retains bounded, sorted type/property/context evidence with an explicit truncation flag. Full Schema.org vocabulary and Google rich-result profile validation remain separate Q1 work; current AUD-13 findings do not imply either form of validation.
 
+The public interface is now branded **SEO Screaming Toad — Not Frog**, with **DJAI Toad** as an alternate community name. The React dashboard uses the supplied toad and DJAI artwork in a dense technical workbench with project navigation, crawl configuration, progress, evidence tables, comparisons and a separate DJAI services rail. The public capacity phrase remains explicitly theoretical.
+
 ## Verification evidence
 
 - Full Go test suite and `go vet` passed.
@@ -28,6 +30,7 @@ The first Q1 slice is implemented in the working tree: AUD-13 detects malformed 
 - The Git worktree was clean before this checkpoint was added.
 - After the quality-first scope change, focused extractor/rules/database/renderer tests, the full Go suite, the network-disabled full Go suite, TypeScript tests and TypeScript production builds passed in the development container.
 - The offline gate exposed and fixed a pre-existing real-DNS dependency in the list-mode test. Application services now have a test-only resolver seam while production continues to default to the guarded system resolver.
+- The branded React workbench passed application type-checking, frontend tests, production compilation, the full embedded-UI Go suite, and visual inspection at 1600×1000 and 430×900 viewports.
 
 ## Scale state
 

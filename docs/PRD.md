@@ -6,6 +6,9 @@ Date: 2026-07-30
 Owner: Product and engineering  
 Product codename: SEO Auditor
 
+Public product name: SEO Screaming Toad — Not Frog
+Alternate community name: DJAI Toad
+
 ## 1. Executive summary
 
 SEO Auditor is a secure, local-first website crawler and technical SEO audit application. It gives site owners, SEO professionals, and developers the recurring crawl, diagnostics, comparison, and export workflows they use most often without sending crawl data to a third-party service. It includes a local web interface, a scriptable CLI, and a constrained Model Context Protocol (MCP) server so an AI agent can run and interpret audits through explicit tools.

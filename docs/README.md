@@ -1,6 +1,6 @@
 # SEO Auditor final planning baseline
 
-Product codename: **SEO Auditor**. Public naming may change without changing the product or architecture baseline.
+Product codename: **SEO Auditor**. Public product name: **SEO Screaming Toad — Not Frog**. Alternate community name: **DJAI Toad**. These names do not change the product or architecture baseline.
 
 This directory is the approved planning source of truth for the secure, local-first SEO crawler as of 2026-07-30.
 

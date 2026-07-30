@@ -28,7 +28,7 @@ func TestHandlerUsesSPAFallback(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/crawls/example", nil)
 	result := httptest.NewRecorder()
 	Handler().ServeHTTP(result, request)
-	if result.Code != http.StatusOK || !strings.Contains(result.Body.String(), "SEO Auditor") {
+	if result.Code != http.StatusOK || !strings.Contains(result.Body.String(), "SEO Screaming Toad") {
 		t.Fatalf("status=%d body=%q", result.Code, result.Body.String())
 	}
 }
