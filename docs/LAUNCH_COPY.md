@@ -22,7 +22,7 @@ It combines a dense local audit dashboard, raw and JavaScript-rendered evidence,
 
 It is designed toward theoretical 100M+ URL segmented campaigns, but we are deliberately not presenting that as verified live capacity. The current release candidate is for people who want an inspectable, local-first Screaming Frog alternative and want to help improve it.
 
-⭐ https://github.com/lovecatisgood-sudo/seo-screaming-toad
+⭐ https://github.com/lovecatisgood-sudo/Free-Opensource-SEO-Screaming-Toad-not-Frog-tool-with-100million-url-crawl-potential
 
 ## Hacker News title
 
@@ -42,7 +42,7 @@ The segmented architecture is intended to support campaigns beyond 100 million U
 
 I would especially value feedback from technical SEOs on false positives, missing evidence, crawl compatibility, and the workflows an open-source alternative should prioritize.
 
-Repository: https://github.com/lovecatisgood-sudo/seo-screaming-toad
+Repository: https://github.com/lovecatisgood-sudo/Free-Opensource-SEO-Screaming-Toad-not-Frog-tool-with-100million-url-crawl-potential
 
 ## Accuracy guardrails
 
@@ -51,4 +51,3 @@ Repository: https://github.com/lovecatisgood-sudo/seo-screaming-toad
 - Say **release candidate** until the project state records a stable release.
 - Do not imply that findings guarantee indexing, rankings, traffic, or rich-result eligibility.
 - Distinguish synthetic scale evidence from live-network crawling.
-

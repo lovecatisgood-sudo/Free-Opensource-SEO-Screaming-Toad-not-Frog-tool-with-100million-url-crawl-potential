@@ -1,9 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/lovecatisgood-sudo/seo-screaming-toad/security
+    url: https://github.com/lovecatisgood-sudo/Free-Opensource-SEO-Screaming-Toad-not-Frog-tool-with-100million-url-crawl-potential/security
     about: Please report vulnerabilities privately; never disclose target data in a public issue.
   - name: Documentation
-    url: https://github.com/lovecatisgood-sudo/seo-screaming-toad/tree/main/docs
+    url: https://github.com/lovecatisgood-sudo/Free-Opensource-SEO-Screaming-Toad-not-Frog-tool-with-100million-url-crawl-potential/tree/main/docs
     about: Check the architecture, MCP, operations, rules, scale, and security documentation.
-

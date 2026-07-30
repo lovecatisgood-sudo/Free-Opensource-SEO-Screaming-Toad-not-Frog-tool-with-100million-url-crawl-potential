@@ -5,7 +5,7 @@
 
 ### A local-first Screaming Frog alternative with an MCP server and theoretical 100M+ URL campaign architecture
 
-[![CI](https://github.com/lovecatisgood-sudo/seo-screaming-toad/actions/workflows/ci.yml/badge.svg)](https://github.com/lovecatisgood-sudo/seo-screaming-toad/actions/workflows/ci.yml)
+[![CI](https://github.com/lovecatisgood-sudo/Free-Opensource-SEO-Screaming-Toad-not-Frog-tool-with-100million-url-crawl-potential/actions/workflows/ci.yml/badge.svg)](https://github.com/lovecatisgood-sudo/Free-Opensource-SEO-Screaming-Toad-not-Frog-tool-with-100million-url-crawl-potential/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8dc63f.svg)](LICENSE)
 [![Core: Go](https://img.shields.io/badge/core-Go-00ADD8?logo=go&logoColor=white)](go.mod)
 [![MCP server](https://img.shields.io/badge/MCP-server-8A2BE2)](docs/MCP.md)
@@ -39,8 +39,8 @@ If you are searching for an **open-source Screaming Frog alternative**, a self-h
 Requirements: Go version from [`.go-version`](.go-version). Node and pnpm are needed only for rendered mode or frontend development.
 
 ```bash
-git clone https://github.com/lovecatisgood-sudo/seo-screaming-toad.git
-cd seo-screaming-toad
+git clone https://github.com/lovecatisgood-sudo/Free-Opensource-SEO-Screaming-Toad-not-Frog-tool-with-100million-url-crawl-potential.git
+cd Free-Opensource-SEO-Screaming-Toad-not-Frog-tool-with-100million-url-crawl-potential
 make bootstrap
 go run ./cmd/seo-auditor
 ```
