@@ -156,3 +156,13 @@ func TestProjectedStorageBytesRoundsUpAndSaturates(t *testing.T) {
 		t.Fatalf("saturated projection=%d", got)
 	}
 }
+
+func TestStorageProjectionWaitsForCompleteSegment(t *testing.T) {
+	t.Parallel()
+	if shouldProjectStorage(1_135, 100_000) {
+		t.Fatal("startup overhead sample must not trigger projection")
+	}
+	if !shouldProjectStorage(100_000, 100_000) {
+		t.Fatal("complete segment must trigger projection")
+	}
+}

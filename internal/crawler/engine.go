@@ -127,7 +127,11 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 		if err := e.Frontier.CheckpointSegments(runCtx, request.CrawlID, request.SegmentSize, storage); err != nil {
 			return err
 		}
-		if progress.Analysed >= 1_000 {
+		// Wait for one complete campaign segment before extrapolating. SQLite and
+		// WAL startup overhead dominates very small samples and can otherwise
+		// produce a false projected-limit stop on large campaigns. The absolute
+		// byte ceiling above remains active throughout the warm-up period.
+		if shouldProjectStorage(progress.Analysed, request.SegmentSize) {
 			projected := projectedStorageBytes(storage, progress.Analysed, request.Limits.MaximumURLs)
 			if projected > request.Limits.MaximumDiskBytes {
 				_ = e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlRunning}, contracts.CrawlLimited, "projected_disk_limit")
@@ -530,4 +534,8 @@ func projectedStorageBytes(storage, analysed, total int64) int64 {
 		return math.MaxInt64
 	}
 	return projected + extra
+}
+
+func shouldProjectStorage(analysed, segmentSize int64) bool {
+	return segmentSize > 0 && analysed >= segmentSize
 }
