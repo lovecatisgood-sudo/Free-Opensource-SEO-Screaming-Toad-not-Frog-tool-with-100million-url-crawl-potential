@@ -93,7 +93,7 @@ func (f *Frontier) LoadCrawl(ctx context.Context, crawlID contracts.ID) (StoredC
 		if err != nil {
 			return result, err
 		}
-		result.Configuration = contracts.CrawlConfiguration{SeedURL: normalized.RequestKey, AllowedHosts: []string{normalized.URL.Hostname()}, UserAgent: "SEOAuditor/0.1", RenderingMode: "raw", Limits: limits}
+		result.Configuration = contracts.CrawlConfiguration{SeedURL: normalized.RequestKey, AllowedHosts: []string{normalized.URL.Hostname()}, UserAgent: "SEOAuditor/2.0", RenderingMode: "raw", Limits: limits}
 	}
 	return result, nil
 }

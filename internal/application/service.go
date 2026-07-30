@@ -18,7 +18,7 @@ import (
 	"github.com/seo-auditor/seo-auditor/internal/renderer"
 )
 
-const UserAgent = "SEOAuditor/0.1 (+https://github.com/seo-auditor/seo-auditor)"
+const UserAgent = "SEOAuditor/2.0 (+https://github.com/seo-auditor/seo-auditor)"
 
 type Service struct {
 	db             *database.DB

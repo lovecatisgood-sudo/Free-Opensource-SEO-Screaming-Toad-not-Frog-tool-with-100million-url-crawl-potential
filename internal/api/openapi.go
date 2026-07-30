@@ -7,7 +7,7 @@ import (
 
 var openAPIDocument = map[string]any{
 	"openapi": "3.1.0",
-	"info":    map[string]any{"title": "SEO Auditor local API", "version": "2.0.0-dev", "description": "Loopback-only API. Mutations require the local session cookie, exact Origin, and X-CSRF-Token."},
+	"info":    map[string]any{"title": "SEO Auditor local API", "version": "2.0.0", "description": "Loopback-only API. Mutations require the local session cookie, exact Origin, and X-CSRF-Token."},
 	"servers": []map[string]string{{"url": "http://127.0.0.1:7331/api/v1"}},
 	"paths": map[string]any{
 		"/health":                             map[string]any{"get": operation("Read local service health")},
