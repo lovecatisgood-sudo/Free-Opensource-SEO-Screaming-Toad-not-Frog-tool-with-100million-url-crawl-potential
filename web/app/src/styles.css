@@ -192,6 +192,9 @@ td code { display: block; max-width: 520px; overflow: hidden; color: #aab5a3; fo
 .status-bar span { padding: 6px 10px; border-right: 1px solid var(--line); color: #7f8979; font: .62rem ui-monospace, SFMono-Regular, Menlo, monospace; }
 .status-bar i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: #71786d; }
 .status-bar i.ready { background: var(--green); }
+.status-bar .creator-credit { margin-left: auto; border-right: 0; }
+.creator-credit a { color: var(--green-bright); font-weight: 800; text-decoration: none; }
+.creator-credit a:hover { color: #e1f7c5; text-decoration: underline; }
 
 .drawer-backdrop { position: fixed; z-index: 20; inset: 0; display: flex; justify-content: flex-end; background: #000b; }
 .drawer { width: min(680px, 100%); height: 100%; padding: 30px; overflow-y: auto; border-left: 1px solid #5a6952; background: #131912; box-shadow: -24px 0 80px #000a; }

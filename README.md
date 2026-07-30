@@ -2,6 +2,8 @@
 
 SEO Screaming Toad (also called DJAI Toad) is a free, local-first, open-source technical SEO crawler focused on safe network behaviour, durable recovery and evidence-backed audits. The crawler core is Go; the browser interface and isolated optional renderer use TypeScript.
 
+Created by [Siamese Cat Dev](https://github.com/lovecatisgood-sudo).
+
 **Free open-source SEO crawling with theoretical 100M+ segmented-campaign potential.** This is an architectural direction, not a tested, supported or guaranteed URL capacity.
 
 The v2.0 implementation is being release-qualified. Raw crawling, rendered-page evidence, local UI/API/CLI/MCP workflows, recovery, reports, lifecycle diagnostics, and the 100,000-URL single-crawl gate are implemented. The production persistence and analysis path has also completed recoverable 1,000,000- and 5,000,000-URL synthetic campaigns; these are experimental scale evidence, not live-network evidence or a supported-capacity claim. The segmented/distributed architecture is theoretically designed for campaigns beyond 100 million URLs, but that capacity is untested, unsupported and not guaranteed. See the [campaign benchmark](./docs/benchmarks/2026-07-30-segmented-campaign.md).
