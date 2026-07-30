@@ -1,0 +1,113 @@
+name: Release candidate
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without the v prefix
+        required: true
+        default: 2.0.0-rc.1
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with: { go-version-file: .go-version, cache: true }
+      - uses: pnpm/action-setup@v6
+        with: { run_install: false }
+      - uses: actions/setup-node@v6
+        with: { node-version-file: .node-version, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck && pnpm test && pnpm build
+      - run: go test ./... && go vet ./...
+      - run: go run ./cmd/seo-auditor-conformance -format json
+
+  build:
+    needs: qualify
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: .go-version, cache: true }
+      - uses: pnpm/action-setup@v6
+        with: { run_install: false }
+      - uses: actions/setup-node@v6
+        with: { node-version-file: .node-version, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Build reproducible candidate directories
+        shell: bash
+        run: |
+          version="${RELEASE_VERSION#v}"
+          SEO_AUDITOR_VERSION="$version" SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" ./scripts/build-release.sh
+          cd ".artifacts/release/$version"
+          find . -exec touch -h -d "@${SOURCE_DATE_EPOCH:-$(git show -s --format=%ct HEAD)}" {} +
+          for directory in seo-auditor-*; do
+            [ -d "$directory" ] || continue
+            case "$directory" in
+              *windows*) zip -X -r "$directory.zip" "$directory" ;;
+              *) tar --sort=name --mtime="@${SOURCE_DATE_EPOCH:-$(git show -s --format=%ct HEAD)}" --owner=0 --group=0 --numeric-owner -czf "$directory.tar.gz" "$directory" ;;
+            esac
+          done
+          find . -maxdepth 1 -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name 'sbom.cdx.json' \) -print0 | sort -z | xargs -0 sha256sum | sed 's#  \./#  #' > SHA256SUMS
+      - name: Attest release archives, checksums, and SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            .artifacts/release/**/seo-auditor-*.tar.gz
+            .artifacts/release/**/seo-auditor-*.zip
+            .artifacts/release/**/SHA256SUMS
+            .artifacts/release/**/sbom.cdx.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate
+          path: |
+            .artifacts/release/**/*.tar.gz
+            .artifacts/release/**/*.zip
+            .artifacts/release/**/SHA256SUMS
+            .artifacts/release/**/sbom.cdx.json
+          if-no-files-found: error
+
+  publish-draft:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with: { name: release-candidate, path: dist }
+      - name: Verify downloaded candidate
+        shell: bash
+        run: |
+          release_dir="$(find dist -name SHA256SUMS -printf '%h\n' | head -1)"
+          ./scripts/verify-release.sh "$release_dir" "${GITHUB_REPOSITORY}"
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          version="${RELEASE_VERSION#v}"
+          tag="v$version"
+          release_dir="$(find dist -name SHA256SUMS -printf '%h\n' | head -1)"
+          args=(release create "$tag" --target "$GITHUB_SHA" --draft --generate-notes --title "SEO Screaming Toad $version")
+          args+=(--prerelease)
+          gh "${args[@]}" "$release_dir"/*.tar.gz "$release_dir"/*.zip "$release_dir"/SHA256SUMS "$release_dir"/sbom.cdx.json

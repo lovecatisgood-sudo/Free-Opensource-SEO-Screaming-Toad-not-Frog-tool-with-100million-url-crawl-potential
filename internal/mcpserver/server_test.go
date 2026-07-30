@@ -234,7 +234,7 @@ func TestRequiredToolsAndIdempotentStartOverMCP(t *testing.T) {
 	for _, tool := range listed.Tools {
 		names[tool.Name] = true
 	}
-	for _, name := range []string{"project_create", "project_list", "profile_create", "profile_list", "crawl_preview_scope", "crawl_start", "crawl_status", "crawl_pause", "crawl_resume", "crawl_cancel", "crawl_list", "crawl_timeline", "audit_summary", "issue_list", "issue_explain", "page_list", "page_get", "link_list", "crawl_compare", "report_export", "diagnostic_create", "artifact_get"} {
+	for _, name := range []string{"project_create", "project_list", "profile_create", "profile_list", "crawl_preview_scope", "crawl_start", "crawl_status", "crawl_pause", "crawl_resume", "crawl_cancel", "crawl_list", "crawl_timeline", "audit_summary", "issue_list", "issue_explain", "page_list", "page_get", "link_list", "architecture_get", "schedule_create", "schedule_list", "schedule_delete", "crawl_compare", "report_export", "diagnostic_create", "artifact_get", "custom_audit_put", "custom_audit_list", "custom_audit_preview", "custom_audit_results", "integration_observation_list", "pagespeed_run", "crux_run", "search_console_run", "ga4_run"} {
 		if !names[name] {
 			t.Errorf("missing tool %s", name)
 		}
@@ -245,6 +245,9 @@ func TestRequiredToolsAndIdempotentStartOverMCP(t *testing.T) {
 		}
 		if tool.Name == "crawl_start" && (tool.Annotations == nil || tool.Annotations.OpenWorldHint == nil || !*tool.Annotations.OpenWorldHint || !tool.Annotations.IdempotentHint) {
 			t.Fatal("crawl_start must advertise open-world and idempotent semantics")
+		}
+		if tool.Name == "pagespeed_run" && (tool.Annotations == nil || tool.Annotations.OpenWorldHint == nil || !*tool.Annotations.OpenWorldHint || tool.Annotations.IdempotentHint) {
+			t.Fatal("pagespeed_run must advertise open-world and non-idempotent semantics")
 		}
 	}
 	unknown, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "crawl_status", Arguments: map[string]any{"crawl_id": "crawl_mcp", "unexpected": true}})

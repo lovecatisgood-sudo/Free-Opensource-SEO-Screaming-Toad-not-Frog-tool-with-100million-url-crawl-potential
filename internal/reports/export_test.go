@@ -30,7 +30,7 @@ func (exportFixture) ListPages(context.Context, contracts.ID, contracts.PageRequ
 	return contracts.Page[database.PageRecord]{Items: []database.PageRecord{{ID: 1, URL: "https://example.com/", Title: "=unsafe", StatusCode: 200}}}, nil
 }
 func (exportFixture) ListIssues(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.IssueRecord], error) {
-	return contracts.Page[database.IssueRecord]{Items: []database.IssueRecord{{ID: 1, RuleID: "AUD-01", Severity: "error", EvidenceJSON: `{"status_code":500}`}}}, nil
+	return contracts.Page[database.IssueRecord]{Items: []database.IssueRecord{{ID: 1, RuleID: "AUD-01", Severity: "error", Classification: "deterministic", EvidenceSource: "raw", EvidenceJSON: `{"status_code":500}`}}}, nil
 }
 
 func TestWorkbookIsValidZipWithSafeInlineCells(t *testing.T) {

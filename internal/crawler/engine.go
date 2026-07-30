@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
+	"github.com/seo-auditor/seo-auditor/internal/customaudit"
 	"github.com/seo-auditor/seo-auditor/internal/database"
 	"github.com/seo-auditor/seo-auditor/internal/extractor"
 	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
@@ -29,12 +30,16 @@ type ScopeEvaluator interface {
 type Renderer interface {
 	Render(context.Context, renderer.Request) (renderer.Result, error)
 }
+type RenderedArtifactStore interface {
+	StoreRenderedArtifacts(context.Context, contracts.ID, int64, renderer.Result, contracts.RenderedEvidenceConfiguration) error
+}
 
 type Engine struct {
 	Frontier        *database.Frontier
 	Fetcher         Fetcher
 	Scope           ScopeEvaluator
 	Renderer        Renderer
+	ArtifactStore   RenderedArtifactStore
 	LeaseTime       time.Duration
 	MaxLinksPerPage int
 }
@@ -47,6 +52,8 @@ type RunRequest struct {
 	RenderingMode         string
 	NearDuplicateDistance int
 	SegmentSize           int64
+	CustomAudits          []customaudit.Definition
+	RenderedEvidence      contracts.RenderedEvidenceConfiguration
 }
 
 type workResult struct {
@@ -276,6 +283,9 @@ func (e *Engine) commitRawBatch(ctx context.Context, request RunRequest, results
 			if err := e.Frontier.CompleteFetch(ctx, request.CrawlID, completion); err != nil {
 				return err
 			}
+			if err := e.Frontier.SaveResourceIssues(ctx, request.CrawlID, result.lease, rules.EvaluateResource(rules.ResourceInput{URL: result.fetch.FinalURL, StatusCode: result.fetch.StatusCode, ContentType: result.fetch.ContentType, DecodedBytes: result.fetch.DecodedBytes, Body: result.fetch.Body})); err != nil {
+				return err
+			}
 			continue
 		}
 		page, err := extractor.Extract(result.fetch.FinalURL, result.fetch.Header, result.fetch.Body)
@@ -286,7 +296,15 @@ func (e *Engine) commitRawBatch(ctx context.Context, request RunRequest, results
 			continue
 		}
 		issues := rules.EvaluatePage(rules.PageInput{Page: page, StatusCode: result.fetch.StatusCode, Headers: result.fetch.Header, Depth: result.lease.Depth}, rules.DefaultThresholds())
-		commits = append(commits, database.AnalysisCommit{Fetch: completion, ProjectID: request.ProjectID, Page: page, Issues: issues})
+		customResults, err := executeCustomAudits(request.CustomAudits, "raw", result.fetch.Body)
+		if err != nil {
+			return err
+		}
+		commit := database.AnalysisCommit{Fetch: completion, ProjectID: request.ProjectID, Page: page, Issues: issues}
+		if len(customResults) > 0 {
+			commit.Custom = &database.CustomAuditData{Definitions: request.CustomAudits, Results: customResults}
+		}
+		commits = append(commits, commit)
 		if result.lease.Depth >= request.Limits.MaximumDepth {
 			continue
 		}
@@ -386,14 +404,19 @@ func (e *Engine) commitResult(ctx context.Context, request RunRequest, result wo
 		return err
 	}
 	if !isHTML(result.fetch.ContentType) {
-		return nil
+		return e.Frontier.SaveResourceIssues(ctx, request.CrawlID, result.lease, rules.EvaluateResource(rules.ResourceInput{URL: result.fetch.FinalURL, StatusCode: result.fetch.StatusCode, ContentType: result.fetch.ContentType, DecodedBytes: result.fetch.DecodedBytes, Body: result.fetch.Body}))
 	}
 	page, err := extractor.Extract(result.fetch.FinalURL, result.fetch.Header, result.fetch.Body)
 	if err != nil {
 		return nil // malformed HTML is evidence for extraction, not a crawl failure.
 	}
 	issues := rules.EvaluatePage(rules.PageInput{Page: page, StatusCode: result.fetch.StatusCode, Headers: result.fetch.Header, Depth: result.lease.Depth}, rules.DefaultThresholds())
-	if err := e.Frontier.SaveAnalysis(ctx, request.CrawlID, request.ProjectID, result.lease, page, issues); err != nil {
+	rawCustomResults, err := executeCustomAudits(request.CustomAudits, "raw", result.fetch.Body)
+	if err != nil {
+		return err
+	}
+	customData := database.CustomAuditData{Definitions: request.CustomAudits, Results: rawCustomResults}
+	if err := e.Frontier.SaveAnalysis(ctx, request.CrawlID, request.ProjectID, result.lease, page, issues, customData); err != nil {
 		return err
 	}
 	discoveryPage := page
@@ -403,11 +426,13 @@ func (e *Engine) commitResult(ctx context.Context, request RunRequest, result wo
 			RequestID: fmt.Sprintf("%s-%d", request.CrawlID, result.lease.CrawlURLID),
 			URL:       result.fetch.FinalURL, Deadline: 30 * time.Second,
 			MaximumRequests: 250, MaximumBytes: maximumBytes,
+			CaptureScreenshot: request.RenderedEvidence.CaptureScreenshot, RunAccessibility: request.RenderedEvidence.RunAccessibility,
 		})
 		metadata := database.RenderMetadata{
 			Status: renderedResult.Status, ErrorCode: renderedResult.ErrorCode,
 			FinalURL: renderedResult.FinalURL, RequestCount: renderedResult.RequestCount,
 			TransferredBytes: renderedResult.TransferredBytes,
+			EngineVersion:    renderedResult.EngineVersion, Viewport: renderedResult.Viewport, ScreenshotTruncated: renderedResult.ScreenshotTruncated, ConsoleMessages: renderedResult.ConsoleMessages, ResourceFailures: renderedResult.ResourceFailures, Accessibility: renderedResult.Accessibility,
 		}
 		if renderErr != nil {
 			metadata.Status = "failed"
@@ -439,6 +464,28 @@ func (e *Engine) commitResult(ctx context.Context, request RunRequest, result wo
 				renderedIssues := rules.EvaluatePage(rules.PageInput{Page: renderedPage, StatusCode: result.fetch.StatusCode, Headers: result.fetch.Header, Depth: result.lease.Depth}, rules.DefaultThresholds())
 				if err := e.Frontier.SaveRenderedAnalysis(ctx, request.CrawlID, request.ProjectID, result.lease, page, renderedPage, renderedIssues, metadata); err != nil {
 					return err
+				}
+				if request.RenderedEvidence.RetainDOM || request.RenderedEvidence.CaptureScreenshot {
+					if e.ArtifactStore == nil {
+						return errors.New("rendered artifact retention requires an artifact store")
+					}
+					if err := e.ArtifactStore.StoreRenderedArtifacts(ctx, request.CrawlID, result.lease.CrawlURLID, renderedResult, request.RenderedEvidence); err != nil {
+						return err
+					}
+					if len(renderedResult.Screenshot) > 0 {
+						if err := e.Frontier.SetRenderedScreenshotStored(ctx, result.lease.CrawlURLID); err != nil {
+							return err
+						}
+					}
+				}
+				renderedCustomResults, customErr := executeCustomAudits(request.CustomAudits, "rendered", []byte(renderedResult.HTML))
+				if customErr != nil {
+					return customErr
+				}
+				if len(renderedCustomResults) > 0 {
+					if err := e.Frontier.SaveCustomAuditResults(ctx, request.CrawlID, result.lease.CrawlURLID, request.CustomAudits, renderedCustomResults); err != nil {
+						return err
+					}
 				}
 				discoveryPage = renderedPage
 			}
@@ -480,6 +527,21 @@ func (e *Engine) commitResult(ctx context.Context, request RunRequest, result wo
 	}
 	_, err = e.Frontier.EnqueueBatch(ctx, discoveries)
 	return err
+}
+
+func executeCustomAudits(definitions []customaudit.Definition, mode string, document []byte) ([]customaudit.Result, error) {
+	var results []customaudit.Result
+	for _, definition := range definitions {
+		if !definition.Enabled || definition.Mode != mode {
+			continue
+		}
+		result, err := customaudit.Execute(definition, document)
+		if err != nil {
+			return nil, fmt.Errorf("custom audit %s: %w", definition.ID, err)
+		}
+		results = append(results, result)
+	}
+	return results, nil
 }
 
 func (e *Engine) failOrRetry(ctx context.Context, crawlID contracts.ID, lease database.Lease, status int, decision *fetchpolicy.RetryDecision, fetchErr error) error {

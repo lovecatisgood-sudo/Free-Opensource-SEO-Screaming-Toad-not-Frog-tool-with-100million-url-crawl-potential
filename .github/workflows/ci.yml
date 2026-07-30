@@ -24,6 +24,8 @@ jobs:
           cache: true
       - name: Test
         run: go test ./...
+      - name: Core SEO conformance
+        run: go run ./cmd/seo-auditor-conformance -format json
       - name: Vet
         run: go vet ./...
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
+	"github.com/seo-auditor/seo-auditor/internal/customaudit"
 	"github.com/seo-auditor/seo-auditor/internal/database"
 	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
 	"github.com/seo-auditor/seo-auditor/internal/renderer"
@@ -130,7 +131,8 @@ func TestEngineCrawlsBoundedGraphOnce(t *testing.T) {
 		"https://example.com/b": `done`,
 	}, calls: make(map[string]int)}
 	engine := &Engine{Frontier: frontier, Fetcher: fetcher, Scope: scope, LeaseTime: time.Minute}
-	if err := engine.Run(ctx, RunRequest{CrawlID: crawlID, ProjectID: projectID, Limits: limits, WorkerID: "test"}); err != nil {
+	definition := customaudit.Definition{ID: "next-links", Name: "Next links", Enabled: true, Mode: "raw", SelectorKind: "css", Selector: "a", Extraction: customaudit.Extraction{Kind: "attribute", Attribute: "href"}, Condition: customaudit.Condition{Kind: "exists"}, Finding: &customaudit.Finding{Severity: "warning", Message: "Links observed"}, Limits: customaudit.DefaultLimits()}
+	if err := engine.Run(ctx, RunRequest{CrawlID: crawlID, ProjectID: projectID, Limits: limits, WorkerID: "test", CustomAudits: []customaudit.Definition{definition}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	progress, err := frontier.Progress(ctx, crawlID)
@@ -144,6 +146,13 @@ func TestEngineCrawlsBoundedGraphOnce(t *testing.T) {
 		if calls != 1 {
 			t.Errorf("%s fetched %d times", target, calls)
 		}
+	}
+	customResults, err := frontier.ListCustomAuditResults(ctx, crawlID, "next-links", contracts.PageRequest{Limit: 10})
+	if err != nil || len(customResults.Items) != 3 {
+		t.Fatalf("custom results=%+v err=%v", customResults, err)
+	}
+	if !customResults.Items[0].Finding || customResults.Items[0].MatchCount != 3 {
+		t.Fatalf("root custom result=%+v", customResults.Items[0])
 	}
 }
 

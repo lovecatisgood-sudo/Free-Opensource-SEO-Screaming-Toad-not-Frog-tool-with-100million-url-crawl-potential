@@ -4,6 +4,8 @@ Product codename: **SEO Auditor**. Public product name: **SEO Screaming Toad —
 
 This directory is the approved planning source of truth for the secure, local-first SEO crawler as of 2026-07-30.
 
+The original PRD, architecture and implementation plan describe the implemented 2.0 baseline. The commercial-quality, professional-product and professional-implementation plans extend that baseline through stable qualification and the 2.1–3.0 roadmap; they do not retroactively describe roadmap features as already implemented.
+
 1. [Final product plan and PRD](./PRD.md) — what the product must do and how success is measured.
 2. [Final system architecture plan](./ARCHITECTURE.md) — how the product will be built and secured.
 3. [Final implementation plan](./IMPLEMENTATION_PLAN.md) — sequence, milestones, traceability, tests, and release gates.
@@ -20,6 +22,10 @@ This directory is the approved planning source of truth for the secure, local-fi
 14. [Audit quality roadmap](./QUALITY_ROADMAP.md) — quality-first delivery order, acceptance gates and claim boundaries.
 15. [MCP agent integration](./MCP.md) — client configuration, tool catalog, workflow and security boundaries.
 16. [Public launch copy](./LAUNCH_COPY.md) — searchable repository copy, community posts and accuracy guardrails.
+17. [Commercial-grade audit quality plan](./COMMERCIAL_QUALITY_PLAN.md) — stable-release qualification, professional accuracy gates, capability waves and the measured comparison path.
+18. [Professional product plan](./PROFESSIONAL_PRODUCT_PLAN.md) — target users, product pillars, releases, requirements, metrics, sustainability and claim boundaries from stable 2.0 through 3.0.
+19. [Professional implementation plan](./PROFESSIONAL_IMPLEMENTATION_PLAN.md) — workstreams, dependencies, phased engineering tasks, tests, migrations, release gates and first iterations.
+20. [SEO conformance suite](./CONFORMANCE.md) — executable fixture contracts, baseline rule-family coverage, precision/recall evidence and provenance fields.
 
 ## Document precedence
 
@@ -28,7 +34,8 @@ If the documents disagree, use this order:
 1. Security and privacy requirements in the PRD.
 2. Product scope and acceptance criteria in the PRD.
 3. Architectural decisions in the architecture document.
-4. Scheduling and task breakdown in the implementation plan.
+4. Professional product scope in the professional product plan for post-RC4 work.
+5. Scheduling and task breakdown in the professional implementation plan for post-RC4 work, otherwise the original implementation baseline.
 
 Changes that alter product scope, security boundaries, supported platforms, or stored data must update all affected documents in the same change.
 

@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "id": "core-rules.v1",
+  "description": "Positive and clean-control fixtures for every current AUD-01 through AUD-17 rule family.",
+  "cases": [
+    {
+      "id": "control.clean",
+      "path": "/control-clean",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete and useful clean control title</title><meta name=\"description\" content=\"This clean control description contains enough useful detail to remain within the configured editorial thresholds for testing.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/control-clean\"></head><body><main><h1>A distinct clean control heading</h1><p>Useful primary content keeps unrelated checks quiet.</p></main></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [],
+      "expected_absent": [{"rule_id":"AUD-01"},{"rule_id":"AUD-02"},{"rule_id":"AUD-03"},{"rule_id":"AUD-04"},{"rule_id":"AUD-05"},{"rule_id":"AUD-06"},{"rule_id":"AUD-07"},{"rule_id":"AUD-08"},{"rule_id":"AUD-09"},{"rule_id":"AUD-10"},{"rule_id":"AUD-11"},{"rule_id":"AUD-12"},{"rule_id":"AUD-13"},{"rule_id":"AUD-14"},{"rule_id":"AUD-15"},{"rule_id":"AUD-16"},{"rule_id":"AUD-17"}]
+    },
+    {
+      "id": "aud01.response",
+      "path": "/aud01",
+      "status_code": 404,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete missing response fixture title</title><meta name=\"description\" content=\"This response fixture has complete metadata so the expected response and indexability observations remain isolated.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud01\"></head><body><h1>A distinct missing response heading</h1></body></html>",
+      "in_sitemap": false,
+      "expected_findings": [
+        {"rule_id":"AUD-01","message":"Page response is not successful","severity":"error","classification":"deterministic","evidence":{"status_code":404}},
+        {"rule_id":"AUD-05","message":"Page is not indexable","severity":"error","classification":"deterministic","evidence":{"status_code":404,"noindex":false}}
+      ]
+    },
+    {
+      "id": "aud02.metadata",
+      "path": "/aud02",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"description\" content=\"This fixture deliberately omits only its title while retaining a complete useful description and canonical declaration.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud02\"></head><body><h1>A distinct metadata fixture heading</h1></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [{"rule_id":"AUD-02","message":"Title is missing or empty","severity":"error","classification":"deterministic","evidence":{"field":"title","length":0}}]
+    },
+    {
+      "id": "aud03.heading",
+      "path": "/aud03",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete heading fixture page title here</title><meta name=\"description\" content=\"This fixture deliberately omits only its primary heading while retaining complete metadata and a canonical declaration.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud03\"></head><body><main><p>No primary heading is present.</p></main></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [{"rule_id":"AUD-03","message":"H1 is missing","severity":"warning","classification":"deterministic","evidence":{"h1_count":0}}]
+    },
+    {
+      "id": "aud04.canonical",
+      "path": "/aud04",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A conflicting canonical fixture page title</title><meta name=\"description\" content=\"This fixture deliberately declares two canonical targets while retaining otherwise complete and healthy page metadata.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/a\"><link rel=\"canonical\" href=\"{{BASE_URL}}/b\"></head><body><h1>A distinct canonical fixture heading</h1></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [{"rule_id":"AUD-04","message":"Page has conflicting canonical elements","severity":"error","classification":"deterministic"}]
+    },
+    {
+      "id": "aud05.indexability",
+      "path": "/aud05",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete noindex fixture page title here</title><meta name=\"description\" content=\"This fixture deliberately declares noindex while retaining otherwise complete metadata and a self canonical target.\"><meta name=\"robots\" content=\"noindex, follow\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud05\"></head><body><h1>A distinct noindex fixture heading</h1></body></html>",
+      "in_sitemap": false,
+      "expected_findings": [{"rule_id":"AUD-05","message":"Page is not indexable","severity":"error","classification":"deterministic","evidence":{"status_code":200,"noindex":true}}]
+    },
+    {
+      "id": "aud06.sitemap",
+      "path": "/aud06",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete sitemap fixture page title</title><meta name=\"description\" content=\"This indexable fixture is deliberately absent from the observed sitemap while keeping every other core page signal healthy.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud06\"></head><body><h1>A distinct sitemap fixture heading</h1></body></html>",
+      "in_sitemap": false,
+      "expected_findings": [{"rule_id":"AUD-06","message":"Indexable page was not observed in a sitemap","severity":"info","classification":"information","evidence":{"in_sitemap":false}}]
+    },
+    {
+      "id": "aud07.robots",
+      "path": "/aud07",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete robots fixture page title here</title><meta name=\"description\" content=\"This fixture supplies complete page evidence while the case input records an explicit robots disallow observation.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud07\"></head><body><h1>A distinct robots fixture heading</h1></body></html>",
+      "in_sitemap": true,
+      "robots_blocked": true,
+      "expected_findings": [{"rule_id":"AUD-07","message":"URL is blocked by robots.txt","severity":"warning","classification":"deterministic","evidence":{"robots_blocked":true}}]
+    },
+    {
+      "id": "aud08.duplicate",
+      "path": "/aud08",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete duplicate fixture page title</title><meta name=\"description\" content=\"This fixture supplies complete page metadata while the case input records two matching exact-content documents.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud08\"></head><body><h1>A distinct duplicate fixture heading</h1><p>Duplicate comparison content.</p></body></html>",
+      "in_sitemap": true,
+      "exact_duplicate_count": 2,
+      "expected_findings": [{"rule_id":"AUD-08","message":"Page has exact content duplicates","severity":"warning","classification":"deterministic","evidence":{"duplicate_count":2}}]
+    },
+    {
+      "id": "aud09.hreflang",
+      "path": "/aud09",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete hreflang fixture page title</title><meta name=\"description\" content=\"This fixture deliberately uses an invalid hreflang value while retaining complete metadata and canonical signals.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud09\"><link rel=\"alternate\" hreflang=\"english_US\" href=\"{{BASE_URL}}/aud09-alt\"></head><body><h1>A distinct hreflang fixture heading</h1></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [{"rule_id":"AUD-09","message":"Hreflang language or region is invalid","severity":"warning","classification":"deterministic","evidence":{"hreflang":"english_US"}}]
+    },
+    {
+      "id": "aud10.image",
+      "path": "/aud10",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete image fixture page title here</title><meta name=\"description\" content=\"This fixture deliberately omits one image alt attribute while retaining complete metadata and canonical signals.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud10\"></head><body><h1>A distinct image fixture heading</h1><img src=\"{{BASE_URL}}/image.png\" width=\"100\" height=\"100\"></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [{"rule_id":"AUD-10","message":"Images are missing alt attributes","severity":"warning","classification":"deterministic","evidence":{"missing_alt":1,"image_count":1}}]
+    },
+    {
+      "id": "aud11.architecture",
+      "path": "/aud11",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete architecture fixture page title</title><meta name=\"description\" content=\"This fixture records a deliberately deep crawl location while retaining complete metadata and a healthy canonical signal.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud11\"></head><body><h1>A distinct architecture fixture heading</h1></body></html>",
+      "in_sitemap": true,
+      "depth": 5,
+      "inlinks": 1,
+      "expected_findings": [{"rule_id":"AUD-11","message":"Page is deeper than the configured threshold","severity":"warning","classification":"recommendation","evidence":{"depth":5,"threshold":4}}]
+    },
+    {
+      "id": "aud12.transport",
+      "path": "/aud12",
+      "document_url": "https://fixture.example/aud12",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete mixed content fixture page title</title><meta name=\"description\" content=\"This HTTPS fixture deliberately references one HTTP resource while retaining complete metadata and canonical signals.\"><link rel=\"canonical\" href=\"https://fixture.example/aud12\"></head><body><h1>A distinct mixed content fixture heading</h1><img src=\"http://fixture.example/insecure.png\" alt=\"Fixture image\" width=\"100\" height=\"100\"></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [{"rule_id":"AUD-12","message":"HTTPS page references HTTP resources","severity":"error","classification":"deterministic","evidence":{"mixed_content_references":1}}]
+    },
+    {
+      "id": "aud13.structured",
+      "path": "/aud13",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete structured data fixture title</title><meta name=\"description\" content=\"This fixture deliberately contains malformed JSON-LD while retaining complete metadata and a healthy canonical signal.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud13\"><script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":</script></head><body><h1>A distinct structured data fixture heading</h1></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [{"rule_id":"AUD-13","message":"JSON-LD syntax is invalid","severity":"error","classification":"deterministic","evidence":{"format":"json-ld","block_index":0}}]
+    },
+    {
+      "id": "aud14.google-profile",
+      "path": "/aud14",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete product profile fixture title</title><meta name=\"description\" content=\"This fixture deliberately omits required merchant product properties while retaining healthy core page signals.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud14\"><script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Product\",\"name\":\"Fixture product\"}</script></head><body><h1>A distinct product profile fixture heading</h1></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [
+        {"rule_id":"AUD-14","message":"Required Google search-feature properties are absent","severity":"error","classification":"deterministic","evidence":{"profile_id":"merchant-product","profile_version":"2026-07-30","block_index":0}},
+        {"rule_id":"AUD-14","message":"Recommended Google search-feature properties are absent","severity":"warning","classification":"recommendation","evidence":{"profile_id":"merchant-product","profile_version":"2026-07-30","block_index":0}}
+      ]
+    },
+    {
+      "id": "aud15.mobile",
+      "path": "/aud15",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete mobile alternate fixture title</title><meta name=\"description\" content=\"This fixture deliberately self-references its AMP alternate while retaining otherwise complete healthy document signals for testing.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud15\"><link rel=\"amphtml\" href=\"{{BASE_URL}}/aud15\"></head><body><h1>A distinct mobile fixture heading</h1></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [{"rule_id":"AUD-15","message":"AMP alternate self-references the current page","severity":"error","classification":"deterministic"}]
+    },
+    {
+      "id": "aud16.image-delivery",
+      "path": "/aud16",
+      "status_code": 200,
+      "headers": {"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'"},
+      "body": "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete image delivery fixture title</title><meta name=\"description\" content=\"This fixture deliberately omits intrinsic image dimensions while retaining complete alt text and otherwise healthy page-level signals.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/aud16\"></head><body><h1>A distinct image delivery heading</h1><img src=\"{{BASE_URL}}/responsive.webp\" alt=\"Fixture image\"></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [{"rule_id":"AUD-16","message":"Images omit declared width or height","severity":"warning","classification":"recommendation","evidence":{"missing_dimensions":1,"image_count":1}}]
+    },
+    {
+      "id": "aud17.pdf",
+      "path": "/aud17.pdf",
+      "status_code": 200,
+      "headers": {"Content-Type": "application/pdf"},
+      "body": "%PDF-1.7 bounded fixture without metadata or tags %%EOF",
+      "in_sitemap": false,
+      "expected_findings": [
+        {"rule_id":"AUD-17","message":"PDF title metadata was not observed","severity":"warning","classification":"recommendation"},
+        {"rule_id":"AUD-17","message":"PDF document language was not observed","severity":"warning","classification":"recommendation"},
+        {"rule_id":"AUD-17","message":"Tagged PDF marker was not observed","severity":"warning","classification":"recommendation"}
+      ]
+    }
+  ]
+}

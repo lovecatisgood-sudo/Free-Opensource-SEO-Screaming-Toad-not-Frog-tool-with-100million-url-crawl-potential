@@ -8,15 +8,52 @@ import (
 	"time"
 
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
+	"github.com/seo-auditor/seo-auditor/internal/customaudit"
 	"github.com/seo-auditor/seo-auditor/internal/extractor"
 	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
 	"github.com/seo-auditor/seo-auditor/internal/rules"
 )
 
-func (f *Frontier) SaveAnalysis(ctx context.Context, crawlID, projectID contracts.ID, lease Lease, page extractor.Page, issues []rules.Issue) error {
+func (f *Frontier) SaveAnalysis(ctx context.Context, crawlID, projectID contracts.ID, lease Lease, page extractor.Page, issues []rules.Issue, custom ...CustomAuditData) error {
 	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		return saveAnalysisTx(ctx, tx, crawlID, projectID, lease, page, issues)
+		return saveAnalysisTx(ctx, tx, crawlID, projectID, lease, page, issues, firstCustomAuditData(custom))
 	})
+}
+
+func (f *Frontier) SaveResourceIssues(ctx context.Context, crawlID contracts.ID, lease Lease, issues []rules.Issue) error {
+	if len(issues) == 0 {
+		return nil
+	}
+	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		for _, issue := range issues {
+			if issue.Evidence == nil {
+				issue.Evidence = map[string]any{}
+			}
+			issue.Evidence["resource_url"] = lease.URL
+			evidence, _ := json.Marshal(issue.Evidence)
+			classification := issue.Classification
+			if classification == "" {
+				classification = rules.Classify(issue)
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO issue(crawl_id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at,classification,evidence_source) VALUES(?,?,?,'url',?,?,?,?,?,?,'raw')`, crawlID, issue.RuleID, issue.RuleVersion, fmt.Sprint(lease.URLID), issue.Severity, string(evidence), now, classification); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+type CustomAuditData struct {
+	Definitions []customaudit.Definition
+	Results     []customaudit.Result
+}
+
+func firstCustomAuditData(values []CustomAuditData) *CustomAuditData {
+	if len(values) == 0 {
+		return nil
+	}
+	return &values[0]
 }
 
 type AnalysisCommit struct {
@@ -24,6 +61,7 @@ type AnalysisCommit struct {
 	ProjectID contracts.ID
 	Page      extractor.Page
 	Issues    []rules.Issue
+	Custom    *CustomAuditData
 }
 
 // CommitAnalysesAndDiscoveries atomically persists a bounded worker batch and
@@ -46,7 +84,7 @@ func (f *Frontier) CommitAnalysesAndDiscoveries(ctx context.Context, crawlID con
 			if err := completeFetchTx(ctx, tx, crawlID, commit.Fetch); err != nil {
 				return err
 			}
-			if err := saveAnalysisTx(ctx, tx, crawlID, commit.ProjectID, commit.Fetch.Lease, commit.Page, commit.Issues); err != nil {
+			if err := saveAnalysisTx(ctx, tx, crawlID, commit.ProjectID, commit.Fetch.Lease, commit.Page, commit.Issues, commit.Custom); err != nil {
 				return err
 			}
 		}
@@ -103,7 +141,7 @@ func (f *Frontier) CommitAnalysesAndDiscoveries(ctx context.Context, crawlID con
 	return inserted, err
 }
 
-func saveAnalysisTx(ctx context.Context, tx *sql.Tx, crawlID, projectID contracts.ID, lease Lease, page extractor.Page, issues []rules.Issue) error {
+func saveAnalysisTx(ctx context.Context, tx *sql.Tx, crawlID, projectID contracts.ID, lease Lease, page extractor.Page, issues []rules.Issue, custom *CustomAuditData) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	var canonical any
 	if len(page.Canonicals) > 0 {
@@ -122,6 +160,15 @@ func saveAnalysisTx(ctx context.Context, tx *sql.Tx, crawlID, projectID contract
 	pageID, err := result.LastInsertId()
 	if err != nil {
 		return err
+	}
+	if custom != nil {
+		definitions := make(map[string]customaudit.Definition, len(custom.Definitions))
+		for _, definition := range custom.Definitions {
+			definitions[definition.ID] = definition
+		}
+		if err := saveCustomAuditResultsTx(ctx, tx, crawlID, pageID, definitions, custom.Results); err != nil {
+			return err
+		}
 	}
 	if len(page.SimilarityHash) == 16 {
 		for band := 0; band < 4; band++ {
@@ -189,7 +236,11 @@ func saveAnalysisTx(ctx context.Context, tx *sql.Tx, crawlID, projectID contract
 		}
 		issue.Evidence["extraction_mode"] = "raw"
 		evidence, _ := json.Marshal(issue.Evidence)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO issue(crawl_id, rule_id, rule_version, subject_type, subject_id, severity, evidence_json, created_at) VALUES (?, ?, ?, 'page', ?, ?, ?, ?)`, crawlID, issue.RuleID, issue.RuleVersion, fmt.Sprint(pageID), issue.Severity, string(evidence), now); err != nil {
+		classification := issue.Classification
+		if classification == "" {
+			classification = rules.Classify(issue)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO issue(crawl_id, rule_id, rule_version, subject_type, subject_id, severity, evidence_json, created_at, classification, evidence_source) VALUES (?, ?, ?, 'page', ?, ?, ?, ?, ?, 'raw')`, crawlID, issue.RuleID, issue.RuleVersion, fmt.Sprint(pageID), issue.Severity, string(evidence), now, classification); err != nil {
 			return err
 		}
 	}

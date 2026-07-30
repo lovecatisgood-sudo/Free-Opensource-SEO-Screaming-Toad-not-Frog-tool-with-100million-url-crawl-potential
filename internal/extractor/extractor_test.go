@@ -32,6 +32,9 @@ func TestExtractTechnicalSEOFields(t *testing.T) {
 	if len(page.StructuredData[0].Contexts) != 1 || page.StructuredData[0].Contexts[0] != "https://schema.org" || len(page.StructuredData[0].Properties) != 1 || page.StructuredData[0].Properties[0] != "headline" {
 		t.Fatalf("structured evidence: %+v", page.StructuredData[0])
 	}
+	if len(page.StructuredData[0].Nodes) != 1 || page.StructuredData[0].Nodes[0].Path != "$" || page.StructuredData[0].Nodes[0].Properties[0] != "headline" {
+		t.Fatalf("structured nodes: %+v", page.StructuredData[0].Nodes)
+	}
 }
 
 func TestExtractReportsInvalidJSONLDStructure(t *testing.T) {
@@ -42,6 +45,21 @@ func TestExtractReportsInvalidJSONLDStructure(t *testing.T) {
 	}
 	if len(page.StructuredData) != 1 || len(page.StructuredData[0].StructuralErrors) != 2 {
 		t.Fatalf("structured data: %+v", page.StructuredData)
+	}
+}
+
+func TestExtractDoesNotTreatInlineContextAliasesAsProperties(t *testing.T) {
+	t.Parallel()
+	page, err := Extract("https://example.com/", nil, []byte(`<script type="application/ld+json">{"@context":{"schema":"https://schema.org/","headline":"schema:headline"},"@type":"schema:Article","headline":"Example"}</script>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.StructuredData) != 1 {
+		t.Fatalf("structured data: %+v", page.StructuredData)
+	}
+	properties := page.StructuredData[0].Properties
+	if len(properties) != 1 || properties[0] != "headline" {
+		t.Fatalf("context aliases leaked into properties: %#v", properties)
 	}
 }
 
@@ -72,5 +90,15 @@ func TestExtractReportsInvalidJSONLD(t *testing.T) {
 	}
 	if len(page.StructuredData) != 1 || page.StructuredData[0].Valid {
 		t.Fatalf("structured data: %+v", page.StructuredData)
+	}
+}
+
+func TestExtractMobileAMPAndResponsiveImageSignals(t *testing.T) {
+	page, err := Extract("https://example.com/page", nil, []byte(`<html><head><link rel="amphtml" href="/amp"><link rel="alternate" media="only screen and (max-width: 640px)" href="/mobile"></head><body><img src="/hero.webp" alt="Hero" loading="lazy" srcset="/hero-2x.webp 2x"></body></html>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.AMPURL != "https://example.com/amp" || page.MobileAlternate != "https://example.com/mobile" || len(page.Images) != 1 || page.Images[0].Loading != "lazy" || !page.Images[0].Srcset {
+		t.Fatalf("signals=%+v", page)
 	}
 }

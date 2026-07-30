@@ -35,6 +35,8 @@ type Image struct {
 	AltPresent bool   `json:"alt_present"`
 	Width      int    `json:"width,omitempty"`
 	Height     int    `json:"height,omitempty"`
+	Loading    string `json:"loading,omitempty"`
+	Srcset     bool   `json:"srcset,omitempty"`
 }
 type Hreflang struct {
 	Language string `json:"language"`
@@ -42,14 +44,24 @@ type Hreflang struct {
 	URL      string `json:"url"`
 }
 type StructuredData struct {
-	Format            string   `json:"format"`
-	Types             []string `json:"types"`
-	Properties        []string `json:"properties,omitempty"`
-	Contexts          []string `json:"contexts,omitempty"`
-	StructuralErrors  []string `json:"structural_errors,omitempty"`
-	EvidenceTruncated bool     `json:"evidence_truncated,omitempty"`
-	Valid             bool     `json:"valid"`
-	Error             string   `json:"error,omitempty"`
+	Format            string           `json:"format"`
+	Types             []string         `json:"types"`
+	Properties        []string         `json:"properties,omitempty"`
+	Contexts          []string         `json:"contexts,omitempty"`
+	StructuralErrors  []string         `json:"structural_errors,omitempty"`
+	EvidenceTruncated bool             `json:"evidence_truncated,omitempty"`
+	Valid             bool             `json:"valid"`
+	Error             string           `json:"error,omitempty"`
+	Nodes             []StructuredNode `json:"nodes,omitempty"`
+}
+
+// StructuredNode retains bounded per-node shape without retaining arbitrary
+// structured-data values. It is sufficient for profile applicability and
+// required-property checks while keeping report evidence small.
+type StructuredNode struct {
+	Path       string   `json:"path"`
+	Types      []string `json:"types,omitempty"`
+	Properties []string `json:"properties,omitempty"`
 }
 
 type Page struct {
@@ -62,6 +74,7 @@ type Page struct {
 	StructuredData                                         []StructuredData
 	Social                                                 map[string]string
 	Language, Viewport, PaginationNext, PaginationPrevious string
+	AMPURL, MobileAlternate                                string
 	VisibleText                                            string
 	WordCount                                              int
 	HTMLHash, ContentHash, SimilarityHash                  string
@@ -145,6 +158,12 @@ func Extract(documentURL string, headers http.Header, body []byte) (Page, error)
 				case "alternate":
 					if language := attribute(node, "hreflang"); language != "" && resolved != "" {
 						page.Hreflangs = append(page.Hreflangs, Hreflang{language, raw, resolved})
+					} else if attribute(node, "media") != "" && resolved != "" && page.MobileAlternate == "" {
+						page.MobileAlternate = resolved
+					}
+				case "amphtml":
+					if page.AMPURL == "" {
+						page.AMPURL = resolved
 					}
 				}
 			}
@@ -162,7 +181,7 @@ func Extract(documentURL string, headers http.Header, body []byte) (Page, error)
 			raw := attribute(node, "src")
 			if resolved := resolve(base, raw); resolved != "" {
 				_, present := attributeWithPresence(node, "alt")
-				page.Images = append(page.Images, Image{raw, resolved, attribute(node, "alt"), present, positiveInt(attribute(node, "width")), positiveInt(attribute(node, "height"))})
+				page.Images = append(page.Images, Image{RawURL: raw, URL: resolved, Alt: attribute(node, "alt"), AltPresent: present, Width: positiveInt(attribute(node, "width")), Height: positiveInt(attribute(node, "height")), Loading: strings.ToLower(attribute(node, "loading")), Srcset: attribute(node, "srcset") != ""})
 			}
 		case "h1", "h2", "h3", "h4", "h5", "h6":
 			level, _ := strconv.Atoi(node.Data[1:])
@@ -320,6 +339,7 @@ func parseJSONLD(value string) StructuredData {
 	structuralErrors := make(map[string]struct{})
 	truncated := false
 	collectJSONLDEvidence(decoded, types, properties, contexts, structuralErrors, &truncated)
+	collectJSONLDNodes(decoded, "$", &result.Nodes, &truncated)
 	for value := range types {
 		result.Types = append(result.Types, value)
 	}
@@ -338,6 +358,49 @@ func parseJSONLD(value string) StructuredData {
 	slices.Sort(result.StructuralErrors)
 	result.EvidenceTruncated = truncated
 	return result
+}
+
+func collectJSONLDNodes(value any, path string, nodes *[]StructuredNode, truncated *bool) {
+	if len(*nodes) >= maximumStructuredEvidenceValues {
+		*truncated = true
+		return
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		node := StructuredNode{Path: path}
+		if raw, exists := typed["@type"]; exists {
+			switch item := raw.(type) {
+			case string:
+				node.Types = append(node.Types, strings.TrimSpace(item))
+			case []any:
+				for _, child := range item {
+					if text, ok := child.(string); ok {
+						node.Types = append(node.Types, strings.TrimSpace(text))
+					}
+				}
+			}
+		}
+		for name := range typed {
+			if !strings.HasPrefix(name, "@") {
+				node.Properties = append(node.Properties, name)
+			}
+		}
+		slices.Sort(node.Types)
+		slices.Sort(node.Properties)
+		if len(node.Types) > 0 || len(node.Properties) > 0 {
+			*nodes = append(*nodes, node)
+		}
+		for name, child := range typed {
+			if name == "@context" {
+				continue
+			}
+			collectJSONLDNodes(child, path+"."+name, nodes, truncated)
+		}
+	case []any:
+		for index, child := range typed {
+			collectJSONLDNodes(child, fmt.Sprintf("%s[%d]", path, index), nodes, truncated)
+		}
+	}
 }
 
 const maximumStructuredEvidenceValues = 1000
@@ -365,6 +428,11 @@ func collectJSONLDEvidence(value any, types, properties, contexts, structuralErr
 			collectJSONLDContexts(raw, contexts, structuralErrors, truncated)
 		}
 		for name, child := range typed {
+			// Context definitions describe term mappings; they are not properties on
+			// the structured-data node and must not enter vocabulary validation.
+			if name == "@context" {
+				continue
+			}
 			if !strings.HasPrefix(name, "@") {
 				addBoundedEvidence(properties, name, truncated)
 			}

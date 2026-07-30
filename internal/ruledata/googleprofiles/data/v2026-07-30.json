@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "provider": "Google Search Central",
+    "version": "2026-07-30",
+    "reviewed_at": "2026-07-30",
+    "sources": [
+      "https://developers.google.com/search/docs/appearance/structured-data/breadcrumb",
+      "https://developers.google.com/search/docs/appearance/structured-data/article",
+      "https://developers.google.com/search/docs/appearance/structured-data/merchant-listing"
+    ],
+    "limitations": "Local diagnostics based on published documentation; results do not guarantee rich-result eligibility or display."
+  },
+  "profiles": [
+    {
+      "id": "breadcrumb",
+      "title": "Breadcrumb",
+      "applies_to": ["BreadcrumbList"],
+      "required": ["itemListElement"],
+      "recommended": [],
+      "nested": [{"types":["ListItem"],"minimum_count":2,"required":["position","name"]}]
+    },
+    {
+      "id": "article",
+      "title": "Article",
+      "applies_to": ["Article","NewsArticle","BlogPosting"],
+      "required": [],
+      "recommended": ["author","datePublished","dateModified","headline","image"],
+      "nested": []
+    },
+    {
+      "id": "merchant-product",
+      "title": "Merchant listing Product",
+      "applies_to": ["Product"],
+      "required": ["name","image","offers"],
+      "recommended": ["description","brand","sku"],
+      "nested": [{"types":["Offer"],"minimum_count":1,"required":["price","priceCurrency","availability"]}]
+    }
+  ]
+}

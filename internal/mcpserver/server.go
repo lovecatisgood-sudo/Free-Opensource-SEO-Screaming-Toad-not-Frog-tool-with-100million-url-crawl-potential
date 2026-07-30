@@ -12,7 +12,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/seo-auditor/seo-auditor/internal/application"
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
+	"github.com/seo-auditor/seo-auditor/internal/customaudit"
 	"github.com/seo-auditor/seo-auditor/internal/database"
+	"github.com/seo-auditor/seo-auditor/internal/integrations"
 	"github.com/seo-auditor/seo-auditor/internal/version"
 )
 
@@ -52,6 +54,12 @@ type ProfileCreateInput struct {
 	RenderingMode       string       `json:"rendering_mode,omitempty" jsonschema:"raw or rendered; defaults to raw"`
 	ResponseCompression string       `json:"response_compression,omitempty" jsonschema:"gzip or disabled; defaults to gzip"`
 	ExcludePathRegex    []string     `json:"exclude_path_regex,omitempty" jsonschema:"bounded regular expressions for excluded URL paths"`
+	RetainRenderedDOM   bool         `json:"retain_rendered_dom,omitempty" jsonschema:"retain a redacted final DOM for seven days; rendered mode only"`
+	CaptureScreenshot   bool         `json:"capture_screenshot,omitempty" jsonschema:"retain a viewport screenshot for seven days; may contain visible personal data"`
+	RunAccessibility    bool         `json:"run_accessibility,omitempty" jsonschema:"run pinned axe automated accessibility checks; rendered mode only"`
+	AuthenticationMode  string       `json:"authentication_mode,omitempty" jsonschema:"none, bearer, basic, or cookie; raw mode only"`
+	CredentialReference string       `json:"credential_reference,omitempty" jsonschema:"pre-existing OS secret-store reference; MCP never accepts the credential value"`
+	AuthenticationUser  string       `json:"authentication_username,omitempty" jsonschema:"username for basic authentication only"`
 }
 type ProfileListInput struct {
 	ProjectID contracts.ID `json:"project_id" jsonschema:"opaque project ID"`
@@ -122,6 +130,67 @@ type ControlOutput struct {
 type ScopePreviewOutput struct {
 	Decisions []application.ScopeDecision `json:"decisions"`
 }
+type CustomAuditPutInput struct {
+	ProjectID  contracts.ID           `json:"project_id"`
+	Definition customaudit.Definition `json:"definition"`
+}
+type CustomAuditPreviewInput struct {
+	Definition customaudit.Definition `json:"definition"`
+	Document   string                 `json:"document" jsonschema:"HTML document up to the local request limit; never sent to a crawl target"`
+}
+type CustomAuditResultsInput struct {
+	CrawlID      contracts.ID `json:"crawl_id"`
+	DefinitionID string       `json:"definition_id,omitempty"`
+	Cursor       string       `json:"cursor,omitempty"`
+	Limit        int          `json:"limit,omitempty"`
+}
+type IntegrationObservationInput struct {
+	ProjectID contracts.ID `json:"project_id"`
+	Provider  string       `json:"provider,omitempty" jsonschema:"optional provider filter"`
+	Cursor    string       `json:"cursor,omitempty"`
+	Limit     int          `json:"limit,omitempty"`
+}
+type PageSpeedInput struct {
+	ProjectID           contracts.ID `json:"project_id"`
+	CrawlID             contracts.ID `json:"crawl_id,omitempty"`
+	CredentialReference string       `json:"credential_reference,omitempty" jsonschema:"pre-existing OS secret-store reference; credential values are never accepted by MCP"`
+	Target              string       `json:"target" jsonschema:"authorized public URL sent to Google PageSpeed Insights"`
+	Strategy            string       `json:"strategy,omitempty" jsonschema:"mobile or desktop"`
+}
+type CrUXInput struct {
+	ProjectID           contracts.ID             `json:"project_id"`
+	CrawlID             contracts.ID             `json:"crawl_id,omitempty"`
+	CredentialReference string                   `json:"credential_reference" jsonschema:"pre-existing OS secret-store reference"`
+	Request             integrations.CrUXRequest `json:"request"`
+}
+type SearchConsoleInput struct {
+	ProjectID           contracts.ID                      `json:"project_id"`
+	CrawlID             contracts.ID                      `json:"crawl_id,omitempty"`
+	CredentialReference string                            `json:"credential_reference" jsonschema:"pre-existing OS secret-store OAuth token reference"`
+	Request             integrations.SearchConsoleRequest `json:"request"`
+}
+type GA4Input struct {
+	ProjectID           contracts.ID            `json:"project_id"`
+	CrawlID             contracts.ID            `json:"crawl_id,omitempty"`
+	CredentialReference string                  `json:"credential_reference" jsonschema:"pre-existing OS secret-store OAuth token reference"`
+	Request             integrations.GA4Request `json:"request"`
+}
+type ArchitectureInput struct {
+	CrawlID   contracts.ID `json:"crawl_id"`
+	NodeLimit int          `json:"node_limit,omitempty" jsonschema:"node ceiling from 1 to 5000; defaults to 1000"`
+	EdgeLimit int          `json:"edge_limit,omitempty" jsonschema:"edge ceiling from 1 to 20000; defaults to 5000"`
+}
+type ScheduleCreateInput struct {
+	ProjectID       contracts.ID `json:"project_id"`
+	ProfileID       contracts.ID `json:"profile_id"`
+	Name            string       `json:"name"`
+	IntervalSeconds int64        `json:"interval_seconds" jsonschema:"seconds from 900 to 2592000"`
+	FirstRunAt      string       `json:"first_run_at,omitempty" jsonschema:"optional future RFC3339 timestamp"`
+}
+type ScheduleDeleteInput struct {
+	ProjectID  contracts.ID `json:"project_id"`
+	ScheduleID contracts.ID `json:"schedule_id"`
+}
 
 func New(caller Caller) *mcp.Server {
 	s := &service{caller: caller, starts: make(map[string]application.CrawlResult)}
@@ -145,10 +214,23 @@ func New(caller Caller) *mcp.Server {
 	mcp.AddTool(server, readTool("page_list", "List crawled pages", "List crawled pages with bounded search and opaque-cursor pagination."), s.pageList)
 	mcp.AddTool(server, readTool("page_get", "Inspect crawled page", "Return one page's bounded raw/rendered extraction, relationships and issue evidence."), s.pageGet)
 	mcp.AddTool(server, readTool("link_list", "List discovered links", "List stored crawl-graph links with bounded opaque-cursor pagination."), s.linkList)
+	mcp.AddTool(server, readTool("architecture_get", "Inspect site architecture", "Return a bounded internal-link graph with depth, segment, link score and orphan evidence."), s.architectureGet)
+	mcp.AddTool(server, additiveTool("schedule_create", "Schedule recurring audit", "Create an explicit bounded recurring audit from an existing profile. The local app must remain running at the due time."), s.scheduleCreate)
+	mcp.AddTool(server, readTool("schedule_list", "List scheduled audits", "List recurring audit definitions and their last run state."), s.scheduleList)
+	mcp.AddTool(server, destructiveTool("schedule_delete", "Delete scheduled audit", "Permanently delete one recurring audit definition; existing crawl results remain."), s.scheduleDelete)
 	mcp.AddTool(server, readTool("crawl_compare", "Compare crawls", "Compare two crawls and disclose whether their configurations match."), s.crawlCompare)
 	mcp.AddTool(server, additiveTool("report_export", "Export audit report", "Create CSV, NDJSON or XLSX output only inside the managed artifact directory. No output path is accepted."), s.reportExport)
 	mcp.AddTool(server, additiveTool("diagnostic_create", "Create diagnostic", "Create a metadata-only support artifact for one crawl. Crawled URLs, content, headers and issue evidence are excluded."), s.diagnosticCreate)
 	mcp.AddTool(server, readTool("artifact_get", "Get artifact metadata", "Return metadata and the approved managed path for one report or diagnostic artifact."), s.artifactGet)
+	mcp.AddTool(server, additiveTool("custom_audit_put", "Save custom audit", "Validate and save one bounded declarative CSS/XPath custom audit. No scripts or network operations are accepted."), s.customAuditPut)
+	mcp.AddTool(server, readTool("custom_audit_list", "List custom audits", "List the project's pre-approved bounded custom-audit definitions."), s.customAuditList)
+	mcp.AddTool(server, readTool("custom_audit_preview", "Preview custom audit", "Run one bounded definition against supplied HTML locally without contacting a crawl target."), s.customAuditPreview)
+	mcp.AddTool(server, readTool("custom_audit_results", "List custom audit results", "List versioned, bounded extraction results produced during a crawl."), s.customAuditResults)
+	mcp.AddTool(server, readTool("integration_observation_list", "List integration observations", "List persisted PageSpeed, CrUX, Search Console, and GA4 observations with explicit evidence source and freshness."), s.integrationObservationList)
+	mcp.AddTool(server, openWorldTool("pagespeed_run", "Run PageSpeed Insights", "Send one authorized public URL to Google PageSpeed Insights and persist bounded lab evidence. May consume API quota; accepts only an OS secret-store reference.", false), s.pageSpeedRun)
+	mcp.AddTool(server, openWorldTool("crux_run", "Query Chrome UX Report", "Query Google CrUX for one authorized public URL or origin and persist bounded field evidence. May consume API quota; accepts only an OS secret-store reference.", false), s.cruxRun)
+	mcp.AddTool(server, openWorldTool("search_console_run", "Query Search Console", "Query an authorized Search Console property and persist bounded external evidence using a pre-existing OS secret-store token reference.", false), s.searchConsoleRun)
+	mcp.AddTool(server, openWorldTool("ga4_run", "Query GA4", "Query an authorized GA4 property for bounded landing-page metrics using a pre-existing OS secret-store token reference.", false), s.ga4Run)
 	return server
 }
 
@@ -167,6 +249,10 @@ func lifecycleTool(name, title, description string) *mcp.Tool {
 func openWorldTool(name, title, description string, idempotent bool) *mcp.Tool {
 	destructive, open := false, true
 	return &mcp.Tool{Name: name, Title: title, Description: description, Annotations: &mcp.ToolAnnotations{Title: title, DestructiveHint: &destructive, IdempotentHint: idempotent, OpenWorldHint: &open}}
+}
+func destructiveTool(name, title, description string) *mcp.Tool {
+	destructive, closed := true, false
+	return &mcp.Tool{Name: name, Title: title, Description: description, Annotations: &mcp.ToolAnnotations{Title: title, DestructiveHint: &destructive, IdempotentHint: true, OpenWorldHint: &closed}}
 }
 
 func (s *service) requireCaller() error {
@@ -205,7 +291,7 @@ func (s *service) profileCreate(ctx context.Context, _ *mcp.CallToolRequest, inp
 	if compression == "" {
 		compression = "gzip"
 	}
-	configuration := contracts.CrawlConfiguration{SeedURL: input.SeedURL, AllowSubdomains: input.AllowSubdomains, ExcludePathRegex: input.ExcludePathRegex, RenderingMode: mode, ResponseCompression: compression, Limits: limits}
+	configuration := contracts.CrawlConfiguration{SeedURL: input.SeedURL, AllowSubdomains: input.AllowSubdomains, ExcludePathRegex: input.ExcludePathRegex, RenderingMode: mode, ResponseCompression: compression, RenderedEvidence: contracts.RenderedEvidenceConfiguration{RetainDOM: input.RetainRenderedDOM, CaptureScreenshot: input.CaptureScreenshot, RunAccessibility: input.RunAccessibility, MaximumPageBytes: 8 << 20, MaximumCrawlBytes: 1 << 30, RetentionDays: 7}, Authentication: contracts.AuthenticationConfiguration{Mode: input.AuthenticationMode, CredentialReference: input.CredentialReference, Username: input.AuthenticationUser}, Limits: limits}
 	err := s.caller.Call(ctx, http.MethodPost, "/api/v1/projects/"+url.PathEscape(string(input.ProjectID))+"/profiles", map[string]any{"name": input.Name, "configuration": configuration}, &output)
 	return nil, output, err
 }
@@ -231,6 +317,66 @@ func (s *service) projectList(ctx context.Context, _ *mcp.CallToolRequest, input
 		return nil, output, err
 	}
 	err := s.caller.Call(ctx, http.MethodGet, "/api/v1/projects?"+pageQuery(input.Cursor, input.Limit), nil, &output)
+	return nil, output, err
+}
+func (s *service) customAuditPut(ctx context.Context, _ *mcp.CallToolRequest, input CustomAuditPutInput) (*mcp.CallToolResult, database.CustomAuditDefinitionRecord, error) {
+	var output database.CustomAuditDefinitionRecord
+	err := s.caller.Call(ctx, http.MethodPut, "/api/v1/projects/"+url.PathEscape(string(input.ProjectID))+"/custom-audits", input.Definition, &output)
+	return nil, output, err
+}
+func (s *service) customAuditList(ctx context.Context, _ *mcp.CallToolRequest, input ProjectInput) (*mcp.CallToolResult, []database.CustomAuditDefinitionRecord, error) {
+	var output []database.CustomAuditDefinitionRecord
+	err := s.caller.Call(ctx, http.MethodGet, "/api/v1/projects/"+url.PathEscape(string(input.ProjectID))+"/custom-audits", nil, &output)
+	return nil, output, err
+}
+func (s *service) customAuditPreview(ctx context.Context, _ *mcp.CallToolRequest, input CustomAuditPreviewInput) (*mcp.CallToolResult, customaudit.Result, error) {
+	var output customaudit.Result
+	err := s.caller.Call(ctx, http.MethodPost, "/api/v1/custom-audits/preview", input, &output)
+	return nil, output, err
+}
+func (s *service) customAuditResults(ctx context.Context, _ *mcp.CallToolRequest, input CustomAuditResultsInput) (*mcp.CallToolResult, contracts.Page[database.CustomAuditResultRecord], error) {
+	var output contracts.Page[database.CustomAuditResultRecord]
+	if err := bounded(input.Limit); err != nil {
+		return nil, output, err
+	}
+	query := pageQuery(input.Cursor, input.Limit)
+	if input.DefinitionID != "" {
+		query += "&definition_id=" + url.QueryEscape(input.DefinitionID)
+	}
+	err := s.caller.Call(ctx, http.MethodGet, "/api/v1/crawls/"+url.PathEscape(string(input.CrawlID))+"/custom-audits?"+query, nil, &output)
+	return nil, output, err
+}
+func (s *service) integrationObservationList(ctx context.Context, _ *mcp.CallToolRequest, input IntegrationObservationInput) (*mcp.CallToolResult, contracts.Page[database.IntegrationObservationRecord], error) {
+	var output contracts.Page[database.IntegrationObservationRecord]
+	if err := bounded(input.Limit); err != nil {
+		return nil, output, err
+	}
+	query := url.Values{"cursor": {input.Cursor}, "limit": {fmt.Sprint(boundedLimit(input.Limit))}, "provider": {input.Provider}}
+	err := s.caller.Call(ctx, http.MethodGet, "/api/v1/projects/"+url.PathEscape(string(input.ProjectID))+"/integrations/observations?"+query.Encode(), nil, &output)
+	return nil, output, err
+}
+func (s *service) pageSpeedRun(ctx context.Context, _ *mcp.CallToolRequest, input PageSpeedInput) (*mcp.CallToolResult, database.IntegrationObservationRecord, error) {
+	var output database.IntegrationObservationRecord
+	body := map[string]any{"crawl_id": input.CrawlID, "credential_reference": input.CredentialReference, "target": input.Target, "strategy": input.Strategy}
+	err := s.caller.Call(ctx, http.MethodPost, "/api/v1/projects/"+url.PathEscape(string(input.ProjectID))+"/integrations/pagespeed", body, &output)
+	return nil, output, err
+}
+func (s *service) cruxRun(ctx context.Context, _ *mcp.CallToolRequest, input CrUXInput) (*mcp.CallToolResult, database.IntegrationObservationRecord, error) {
+	var output database.IntegrationObservationRecord
+	body := map[string]any{"crawl_id": input.CrawlID, "credential_reference": input.CredentialReference, "request": input.Request}
+	err := s.caller.Call(ctx, http.MethodPost, "/api/v1/projects/"+url.PathEscape(string(input.ProjectID))+"/integrations/crux", body, &output)
+	return nil, output, err
+}
+func (s *service) searchConsoleRun(ctx context.Context, _ *mcp.CallToolRequest, input SearchConsoleInput) (*mcp.CallToolResult, database.IntegrationObservationRecord, error) {
+	var output database.IntegrationObservationRecord
+	body := map[string]any{"crawl_id": input.CrawlID, "credential_reference": input.CredentialReference, "request": input.Request}
+	err := s.caller.Call(ctx, http.MethodPost, "/api/v1/projects/"+url.PathEscape(string(input.ProjectID))+"/integrations/search-console", body, &output)
+	return nil, output, err
+}
+func (s *service) ga4Run(ctx context.Context, _ *mcp.CallToolRequest, input GA4Input) (*mcp.CallToolResult, database.IntegrationObservationRecord, error) {
+	var output database.IntegrationObservationRecord
+	body := map[string]any{"crawl_id": input.CrawlID, "credential_reference": input.CredentialReference, "request": input.Request}
+	err := s.caller.Call(ctx, http.MethodPost, "/api/v1/projects/"+url.PathEscape(string(input.ProjectID))+"/integrations/ga4", body, &output)
 	return nil, output, err
 }
 func (s *service) previewScope(ctx context.Context, _ *mcp.CallToolRequest, input ScopePreviewInput) (*mcp.CallToolResult, ScopePreviewOutput, error) {
@@ -315,6 +461,41 @@ func (s *service) linkList(ctx context.Context, _ *mcp.CallToolRequest, input Cr
 		return nil, output, err
 	}
 	err := s.caller.Call(ctx, http.MethodGet, crawlPath(input.CrawlID, "links")+"?"+pageQuery(input.Cursor, input.Limit), nil, &output)
+	return nil, output, err
+}
+func (s *service) architectureGet(ctx context.Context, _ *mcp.CallToolRequest, input ArchitectureInput) (*mcp.CallToolResult, database.ArchitectureGraph, error) {
+	var output database.ArchitectureGraph
+	nodes, edges := input.NodeLimit, input.EdgeLimit
+	if nodes == 0 {
+		nodes = 1000
+	}
+	if edges == 0 {
+		edges = 5000
+	}
+	if nodes < 1 || nodes > 5000 || edges < 1 || edges > 20000 {
+		return nil, output, errors.New("architecture limits are outside supported bounds")
+	}
+	query := url.Values{"node_limit": {fmt.Sprint(nodes)}, "edge_limit": {fmt.Sprint(edges)}}
+	err := s.caller.Call(ctx, http.MethodGet, crawlPath(input.CrawlID, "architecture")+"?"+query.Encode(), nil, &output)
+	return nil, output, err
+}
+func (s *service) scheduleCreate(ctx context.Context, _ *mcp.CallToolRequest, input ScheduleCreateInput) (*mcp.CallToolResult, database.ScheduledAuditRecord, error) {
+	var output database.ScheduledAuditRecord
+	body := map[string]any{"profile_id": input.ProfileID, "name": input.Name, "interval_seconds": input.IntervalSeconds, "first_run_at": input.FirstRunAt}
+	err := s.caller.Call(ctx, http.MethodPost, "/api/v1/projects/"+url.PathEscape(string(input.ProjectID))+"/schedules", body, &output)
+	return nil, output, err
+}
+func (s *service) scheduleList(ctx context.Context, _ *mcp.CallToolRequest, input ProfileListInput) (*mcp.CallToolResult, contracts.Page[database.ScheduledAuditRecord], error) {
+	var output contracts.Page[database.ScheduledAuditRecord]
+	if err := bounded(input.Limit); err != nil {
+		return nil, output, err
+	}
+	err := s.caller.Call(ctx, http.MethodGet, "/api/v1/projects/"+url.PathEscape(string(input.ProjectID))+"/schedules?"+pageQuery(input.Cursor, input.Limit), nil, &output)
+	return nil, output, err
+}
+func (s *service) scheduleDelete(ctx context.Context, _ *mcp.CallToolRequest, input ScheduleDeleteInput) (*mcp.CallToolResult, map[string]bool, error) {
+	output := map[string]bool{}
+	err := s.caller.Call(ctx, http.MethodDelete, "/api/v1/projects/"+url.PathEscape(string(input.ProjectID))+"/schedules/"+url.PathEscape(string(input.ScheduleID)), nil, &output)
 	return nil, output, err
 }
 func (s *service) auditSummary(ctx context.Context, _ *mcp.CallToolRequest, input CrawlInput) (*mcp.CallToolResult, database.AuditSummary, error) {

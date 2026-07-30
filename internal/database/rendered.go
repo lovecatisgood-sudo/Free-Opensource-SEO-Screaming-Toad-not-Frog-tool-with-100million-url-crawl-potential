@@ -10,15 +10,22 @@ import (
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
 	"github.com/seo-auditor/seo-auditor/internal/extractor"
 	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
+	renderengine "github.com/seo-auditor/seo-auditor/internal/renderer"
 	"github.com/seo-auditor/seo-auditor/internal/rules"
 )
 
 type RenderMetadata struct {
-	Status           string
-	ErrorCode        string
-	FinalURL         string
-	RequestCount     int
-	TransferredBytes int64
+	Status              string
+	ErrorCode           string
+	FinalURL            string
+	RequestCount        int
+	TransferredBytes    int64
+	EngineVersion       string
+	Viewport            string
+	ScreenshotTruncated bool
+	ConsoleMessages     []renderengine.BrowserDiagnostic
+	ResourceFailures    []renderengine.ResourceFailure
+	Accessibility       []renderengine.AccessibilityFinding
 }
 
 // SaveRenderFailure preserves renderer coverage even when raw extraction
@@ -62,6 +69,34 @@ func (f *Frontier) SaveRenderedAnalysis(ctx context.Context, crawlID, projectID 
 		if err := tx.QueryRowContext(ctx, "SELECT id FROM rendered_page WHERE crawl_url_id=?", lease.CrawlURLID).Scan(&renderedPageID); err != nil {
 			return err
 		}
+		screenshotStatus := "not_requested"
+		if metadata.ScreenshotTruncated {
+			screenshotStatus = "truncated"
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE rendered_page SET engine_version=?,viewport=?,screenshot_status=?,console_count=?,resource_failure_count=?,accessibility_count=? WHERE crawl_url_id=?`, metadata.EngineVersion, metadata.Viewport, screenshotStatus, len(metadata.ConsoleMessages), len(metadata.ResourceFailures), len(metadata.Accessibility), lease.CrawlURLID); err != nil {
+			return err
+		}
+		for _, table := range []string{"render_console", "render_resource_failure", "accessibility_finding"} {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE crawl_url_id=?", lease.CrawlURLID); err != nil {
+				return err
+			}
+		}
+		for position, item := range metadata.ConsoleMessages {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO render_console(crawl_url_id,position,level,message) VALUES(?,?,?,?)`, lease.CrawlURLID, position, item.Level, item.Message); err != nil {
+				return err
+			}
+		}
+		for position, item := range metadata.ResourceFailures {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO render_resource_failure(crawl_url_id,position,resource_type,url,error_code) VALUES(?,?,?,?,?)`, lease.CrawlURLID, position, item.ResourceType, item.URL, item.ErrorCode); err != nil {
+				return err
+			}
+		}
+		for position, item := range metadata.Accessibility {
+			tags, _ := json.Marshal(item.Tags)
+			if _, err := tx.ExecContext(ctx, `INSERT INTO accessibility_finding(crawl_url_id,position,rule_id,impact,tags_json,target,html,help,engine_version) VALUES(?,?,?,?,?,?,?,?,?)`, lease.CrawlURLID, position, item.RuleID, item.Impact, string(tags), item.Target, item.HTML, item.Help, metadata.EngineVersion); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM render_difference WHERE crawl_url_id=?", lease.CrawlURLID); err != nil {
 			return err
 		}
@@ -92,11 +127,22 @@ func (f *Frontier) SaveRenderedAnalysis(ctx context.Context, crawlID, projectID 
 			}
 			issue.Evidence["extraction_mode"] = "rendered"
 			evidence, _ := json.Marshal(issue.Evidence)
-			if _, err := tx.ExecContext(ctx, `INSERT INTO issue(crawl_id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at) VALUES (?,?,?,'rendered_page',?,?,?,?)`, crawlID, issue.RuleID, issue.RuleVersion, fmt.Sprint(renderedPageID), issue.Severity, string(evidence), now); err != nil {
+			classification := issue.Classification
+			if classification == "" {
+				classification = rules.Classify(issue)
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO issue(crawl_id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at,classification,evidence_source) VALUES (?,?,?,'rendered_page',?,?,?,?,?,'rendered')`, crawlID, issue.RuleID, issue.RuleVersion, fmt.Sprint(renderedPageID), issue.Severity, string(evidence), now, classification); err != nil {
 				return err
 			}
 		}
 		return nil
+	})
+}
+
+func (f *Frontier) SetRenderedScreenshotStored(ctx context.Context, crawlURLID int64) error {
+	return f.writer.Submit(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE rendered_page SET screenshot_status='stored' WHERE crawl_url_id=?`, crawlURLID)
+		return err
 	})
 }
 
@@ -119,7 +165,31 @@ func renderDifferences(raw, rendered extractor.Page) map[string][2]string {
 		"language":         {raw.Language, rendered.Language},
 		"content_hash":     {raw.ContentHash, rendered.ContentHash},
 		"text_length":      {fmt.Sprint(len(raw.VisibleText)), fmt.Sprint(len(rendered.VisibleText))},
+		"headings":         {boundedJSON(raw.Headings), boundedJSON(rendered.Headings)},
+		"link_count":       {fmt.Sprint(len(raw.Links)), fmt.Sprint(len(rendered.Links))},
+		"image_count":      {fmt.Sprint(len(raw.Images)), fmt.Sprint(len(rendered.Images))},
+		"hreflang":         {boundedJSON(raw.Hreflangs), boundedJSON(rendered.Hreflangs)},
+		"structured_data":  {structuredSummary(raw.StructuredData), structuredSummary(rendered.StructuredData)},
+		"viewport":         {raw.Viewport, rendered.Viewport},
+		"amp_alternate":    {raw.AMPURL, rendered.AMPURL},
+		"mobile_alternate": {raw.MobileAlternate, rendered.MobileAlternate},
 	}
+}
+
+func boundedJSON(value any) string {
+	body, _ := json.Marshal(value)
+	if len(body) > 4096 {
+		return string(body[:4096]) + "…"
+	}
+	return string(body)
+}
+
+func structuredSummary(items []extractor.StructuredData) string {
+	summary := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		summary = append(summary, map[string]any{"format": item.Format, "types": item.Types, "valid": item.Valid})
+	}
+	return boundedJSON(summary)
 }
 
 func canonicalString(page extractor.Page) string {

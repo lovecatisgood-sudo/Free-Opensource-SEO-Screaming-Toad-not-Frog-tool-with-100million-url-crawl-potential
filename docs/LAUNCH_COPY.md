@@ -18,7 +18,7 @@ DJAI Academy community-built, free open-source technical SEO crawler and Screami
 
 🐸 Meet **SEO Screaming Toad — Not Frog**, a free open-source technical SEO crawler built in Go by Siamese Cat Dev together with DJAI Academy trainers and community members.
 
-It combines a dense local audit dashboard, raw and JavaScript-rendered evidence, versioned SEO checks, crawl comparison, recoverable jobs, CSV/NDJSON/XLSX reports, and a 23-tool MCP server that lets AI agents operate bounded audits.
+It combines a dense local audit dashboard, raw and JavaScript-rendered evidence, versioned SEO checks, crawl comparison, recoverable jobs, CSV/NDJSON/XLSX reports, and a 36-tool MCP server that lets AI agents operate bounded audits.
 
 It is designed toward theoretical 100M+ URL segmented campaigns, but we are deliberately not presenting that as verified live capacity. The current release candidate is for people who want an inspectable, local-first Screaming Frog alternative and want to help improve it.
 
@@ -32,7 +32,7 @@ Show HN: SEO Screaming Toad – an open-source SEO crawler with an MCP server
 
 ## Reddit/community title
 
-I built an open-source Screaming Frog alternative in Go with a 23-tool MCP server
+I built an open-source Screaming Frog alternative in Go with a 36-tool MCP server
 
 ## Longer community post
 

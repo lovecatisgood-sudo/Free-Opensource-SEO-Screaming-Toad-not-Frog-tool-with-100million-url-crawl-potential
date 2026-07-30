@@ -68,6 +68,12 @@ func validateConfiguration(configuration contracts.CrawlConfiguration) (contract
 	if size := configuration.EffectiveSegmentSize(); size < 10_000 || size > 100_000 {
 		return configuration, errors.New("segment size must be between 10000 and 100000 URLs")
 	}
+	if err := configuration.RenderedEvidence.Validate(configuration.RenderingMode); err != nil {
+		return configuration, err
+	}
+	if err := configuration.Authentication.Validate(configuration.RenderingMode); err != nil {
+		return configuration, err
+	}
 	if err := configuration.Limits.Validate(); err != nil {
 		return configuration, err
 	}
