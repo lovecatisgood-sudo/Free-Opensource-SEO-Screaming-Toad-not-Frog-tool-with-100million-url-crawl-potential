@@ -57,14 +57,15 @@ WHERE cu.crawl_id=? AND length(p.similarity_hash)=16 ORDER BY p.id`, crawlID)
 				seen[candidate] = struct{}{}
 				other := pages[candidate]
 				candidateDistance := bits.OnesCount64(page.value ^ other.value)
-				if candidateDistance <= threshold && candidateDistance < distance {
+				if candidateDistance <= threshold {
+					// Any qualifying page is a valid representative. Continuing to
+					// search for the closest representative turns large shared-template
+					// bands into a quadratic scan without changing the finding.
 					match, distance = candidate, candidateDistance
-					if distance == 0 {
-						break
-					}
+					break
 				}
 			}
-			if distance == 0 {
+			if match >= 0 {
 				break
 			}
 		}
