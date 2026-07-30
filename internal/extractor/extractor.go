@@ -42,10 +42,14 @@ type Hreflang struct {
 	URL      string `json:"url"`
 }
 type StructuredData struct {
-	Format string   `json:"format"`
-	Types  []string `json:"types"`
-	Valid  bool     `json:"valid"`
-	Error  string   `json:"error,omitempty"`
+	Format            string   `json:"format"`
+	Types             []string `json:"types"`
+	Properties        []string `json:"properties,omitempty"`
+	Contexts          []string `json:"contexts,omitempty"`
+	StructuralErrors  []string `json:"structural_errors,omitempty"`
+	EvidenceTruncated bool     `json:"evidence_truncated,omitempty"`
+	Valid             bool     `json:"valid"`
+	Error             string   `json:"error,omitempty"`
 }
 
 type Page struct {
@@ -311,34 +315,98 @@ func parseJSONLD(value string) StructuredData {
 		return result
 	}
 	types := make(map[string]struct{})
-	collectJSONLDTypes(decoded, types)
+	properties := make(map[string]struct{})
+	contexts := make(map[string]struct{})
+	structuralErrors := make(map[string]struct{})
+	truncated := false
+	collectJSONLDEvidence(decoded, types, properties, contexts, structuralErrors, &truncated)
 	for value := range types {
 		result.Types = append(result.Types, value)
 	}
+	for value := range properties {
+		result.Properties = append(result.Properties, value)
+	}
+	for value := range contexts {
+		result.Contexts = append(result.Contexts, value)
+	}
+	for value := range structuralErrors {
+		result.StructuralErrors = append(result.StructuralErrors, value)
+	}
 	slices.Sort(result.Types)
+	slices.Sort(result.Properties)
+	slices.Sort(result.Contexts)
+	slices.Sort(result.StructuralErrors)
+	result.EvidenceTruncated = truncated
 	return result
 }
-func collectJSONLDTypes(value any, types map[string]struct{}) {
+
+const maximumStructuredEvidenceValues = 1000
+
+func collectJSONLDEvidence(value any, types, properties, contexts, structuralErrors map[string]struct{}, truncated *bool) {
 	switch typed := value.(type) {
 	case map[string]any:
 		if raw, exists := typed["@type"]; exists {
 			switch item := raw.(type) {
 			case string:
-				types[item] = struct{}{}
+				addBoundedEvidence(types, strings.TrimSpace(item), truncated)
 			case []any:
 				for _, child := range item {
 					if text, ok := child.(string); ok {
-						types[text] = struct{}{}
+						addBoundedEvidence(types, strings.TrimSpace(text), truncated)
+					} else {
+						addBoundedEvidence(structuralErrors, "@type arrays must contain only strings", truncated)
 					}
 				}
+			default:
+				addBoundedEvidence(structuralErrors, "@type must be a string or an array of strings", truncated)
 			}
 		}
-		for _, child := range typed {
-			collectJSONLDTypes(child, types)
+		if raw, exists := typed["@context"]; exists {
+			collectJSONLDContexts(raw, contexts, structuralErrors, truncated)
+		}
+		for name, child := range typed {
+			if !strings.HasPrefix(name, "@") {
+				addBoundedEvidence(properties, name, truncated)
+			}
+			collectJSONLDEvidence(child, types, properties, contexts, structuralErrors, truncated)
 		}
 	case []any:
 		for _, child := range typed {
-			collectJSONLDTypes(child, types)
+			collectJSONLDEvidence(child, types, properties, contexts, structuralErrors, truncated)
 		}
 	}
+}
+
+func collectJSONLDContexts(value any, contexts, structuralErrors map[string]struct{}, truncated *bool) {
+	switch typed := value.(type) {
+	case string:
+		addBoundedEvidence(contexts, strings.TrimSpace(typed), truncated)
+	case []any:
+		for _, child := range typed {
+			collectJSONLDContexts(child, contexts, structuralErrors, truncated)
+		}
+	case map[string]any:
+		// An inline context is valid JSON-LD. Record the fact without retaining
+		// attacker-controlled context definitions in issue evidence.
+		addBoundedEvidence(contexts, "[inline context]", truncated)
+	case nil:
+		// JSON-LD permits null to reset the active context.
+		return
+	default:
+		addBoundedEvidence(structuralErrors, "@context must be a string, object, or array", truncated)
+	}
+}
+
+func addBoundedEvidence(values map[string]struct{}, value string, truncated *bool) {
+	if value == "" {
+		return
+	}
+	if _, exists := values[value]; exists {
+		return
+	}
+	if len(values) >= maximumStructuredEvidenceValues {
+		*truncated = true
+		return
+	}
+	values[value] = struct{}{}
 }

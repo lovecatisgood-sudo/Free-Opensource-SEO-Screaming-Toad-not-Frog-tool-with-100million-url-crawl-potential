@@ -30,6 +30,7 @@ type Service struct {
 	active         map[contracts.ID]bool
 	artifactDir    string
 	rendererConfig config.Renderer
+	resolver       fetchpolicy.Resolver
 }
 
 func Open(ctx context.Context, dataDirectory string) (*Service, error) {
@@ -52,7 +53,7 @@ func Open(ctx context.Context, dataDirectory string) (*Service, error) {
 		cancel()
 		return nil, err
 	}
-	service := &Service{db: db, frontier: database.NewFrontier(db, 1024), ctx: serviceCtx, cancel: cancel, active: make(map[contracts.ID]bool), artifactDir: artifactDir, rendererConfig: rendererConfig}
+	service := &Service{db: db, frontier: database.NewFrontier(db, 1024), ctx: serviceCtx, cancel: cancel, active: make(map[contracts.ID]bool), artifactDir: artifactDir, rendererConfig: rendererConfig, resolver: fetchpolicy.SystemResolver{}}
 	if err := service.frontier.RecoverInterruptedCrawls(ctx); err != nil {
 		service.frontier.Close()
 		_ = db.Close()
@@ -284,7 +285,10 @@ func (s *Service) buildPrepared(ctx context.Context, result CrawlResult, configu
 	if err != nil {
 		return preparedCrawl{}, err
 	}
-	resolver := fetchpolicy.SystemResolver{}
+	resolver := s.resolver
+	if resolver == nil {
+		resolver = fetchpolicy.SystemResolver{}
+	}
 	guard := &fetchpolicy.Guard{Resolver: resolver, Scope: scope}
 	if _, err := guard.Validate(ctx, seed.RequestKey); err != nil {
 		return preparedCrawl{}, fmt.Errorf("seed rejected: %w", err)

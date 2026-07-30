@@ -16,5 +16,6 @@ Rules are versioned and every finding stores its rule ID, version, subject, seve
 | AUD-10 | Images | warning | absent alt attributes and failing image targets | visual intent is unknown |
 | AUD-11 | Architecture | warning | deep/orphan-like pages and nofollow observations | utility pages may be intentionally isolated |
 | AUD-12 | Transport | warning | mixed content and selected defensive-header observations | not a security audit or ranking factor |
+| AUD-13 | Structured data syntax | error | malformed JSON-LD, invalid `@type`/`@context` structures, and compact types without an observed Schema.org context | does not validate the complete Schema.org vocabulary or Google rich-result eligibility |
 
 Remediation and full limitation text are available through `issue-explain`, the page-detail UI, and the MCP `issue_explain` tool. Raw and rendered findings are stored as distinct subject types with an `extraction_mode` evidence field. Rendered evidence never silently replaces raw evidence.

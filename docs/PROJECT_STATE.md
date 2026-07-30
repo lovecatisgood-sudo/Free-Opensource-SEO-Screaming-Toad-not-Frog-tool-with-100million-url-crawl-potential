@@ -12,6 +12,10 @@ Do not describe the product as a stable v2.0 release yet. External release quali
 
 Repeated 5–10-million campaigns and live 100M qualification were removed from v2.0 scope by product decision. Approved language is: “Architecturally designed for segmented campaigns beyond 100 million URLs; this is a theoretical scalability target, not a tested, supported or guaranteed capacity.”
 
+Product development is now quality-first rather than capacity-first. `docs/QUALITY_ROADMAP.md` defines the ordered audit-depth programme. Its claim boundary keeps URL capacity separate from audit quality and prohibits parity/superiority claims until a published fixture suite supports them.
+
+The first Q1 slice is implemented in the working tree: AUD-13 detects malformed JSON-LD, structurally invalid `@type`/`@context` values, and compact structured-data types without an observed Schema.org context. Extraction now retains bounded, sorted type/property/context evidence with an explicit truncation flag. Full Schema.org vocabulary and Google rich-result profile validation remain separate Q1 work; current AUD-13 findings do not imply either form of validation.
+
 ## Verification evidence
 
 - Full Go test suite and `go vet` passed.
@@ -22,6 +26,8 @@ Repeated 5–10-million campaigns and live 100M qualification were removed from 
 - RC4 is unsigned.
 - Release artifacts are local at `.artifacts/release/2.0.0-rc.4/`.
 - The Git worktree was clean before this checkpoint was added.
+- After the quality-first scope change, focused extractor/rules/database/renderer tests, the full Go suite, the network-disabled full Go suite, TypeScript tests and TypeScript production builds passed in the development container.
+- The offline gate exposed and fixed a pre-existing real-DNS dependency in the list-mode test. Application services now have a test-only resolver seam while production continues to default to the guarded system resolver.
 
 ## Scale state
 
@@ -68,10 +74,11 @@ Hostinger returned HTTP 403 whenever the client explicitly sent an `Accept-Encod
 
 ## Resume order
 
-1. Read `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_PLAN.md`, this checkpoint and the segmented campaign report.
+1. Read `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/QUALITY_ROADMAP.md`, this checkpoint and the segmented campaign report.
 2. Confirm `git status --short --branch` is clean and start the capability-free development container.
-3. Obtain more authorized beta targets and retain comparison evidence.
-4. Obtain clean macOS/Windows environments and a signing identity before promoting RC4 to stable.
-5. Treat any additional multi-million or distributed campaigns as separately approved optional research.
+3. Continue Q1 with a provenance-recorded, versioned Schema.org vocabulary snapshot, then implement AUD-14 as separate Google search-feature profiles beginning with Breadcrumb, Article and Product.
+4. Obtain more authorized beta targets and retain comparison evidence.
+5. Obtain clean macOS/Windows environments and a signing identity before promoting RC4 to stable.
+6. Treat any additional multi-million or distributed campaigns as separately approved optional research.
 
 The ignored `open-seo-crawler/` reference remains untrusted and must not be installed, executed or copied. SEonaut was used only as design inspiration; project source remains original.

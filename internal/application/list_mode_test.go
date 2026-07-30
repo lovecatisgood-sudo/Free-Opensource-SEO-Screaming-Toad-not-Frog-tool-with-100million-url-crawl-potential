@@ -2,10 +2,17 @@ package application
 
 import (
 	"context"
+	"net/netip"
 	"testing"
 
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
 )
+
+type listModeResolver struct{}
+
+func (listModeResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
+	return []netip.Addr{netip.MustParseAddr("93.184.216.34")}, nil
+}
 
 func TestPrepareListModeDeduplicatesInOrderAndExpandsHosts(t *testing.T) {
 	t.Parallel()
@@ -14,6 +21,7 @@ func TestPrepareListModeDeduplicatesInOrderAndExpandsHosts(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer service.Close()
+	service.resolver = listModeResolver{}
 	limits := contracts.DefaultCrawlLimits()
 	prepared, err := service.prepare(context.Background(), CrawlRequest{ProjectName: "List", SeedURLs: []string{"https://example.com/a", "https://example.org/b", "https://example.com/a#duplicate"}, Limits: limits})
 	if err != nil {

@@ -59,6 +59,7 @@ var Catalog = []Metadata{
 	{"AUD-10", "Image alternatives", "images", "Add appropriate alt attributes; use empty alt only for decorative images.", "The crawler cannot determine visual intent without human review.", 1, SeverityWarning},
 	{"AUD-11", "Internal architecture", "links", "Improve crawl depth and contextual internal links where appropriate.", "Low inlink counts can be intentional for utility pages.", 1, SeverityWarning},
 	{"AUD-12", "Transport observations", "security", "Remove mixed content and consider appropriate defensive response headers.", "Security headers are technical observations, not ranking factors.", 1, SeverityWarning},
+	{"AUD-13", "Structured data syntax", "structured-data", "Repair invalid JSON-LD and use a valid Schema.org context for compact Schema.org type names.", "This rule validates syntax and structural consistency only; it does not validate the full Schema.org vocabulary or Google rich-result eligibility.", 1, SeverityError},
 }
 
 var languagePattern = regexp.MustCompile(`(?i)^(x-default|[a-z]{2,3}(-[a-z]{2}|-[0-9]{3})?)$`)
@@ -174,7 +175,39 @@ func EvaluatePage(input PageInput, thresholds Thresholds) []Issue {
 			add("AUD-12", SeverityInfo, "Content-Security-Policy header was not observed", map[string]any{"header": "Content-Security-Policy"})
 		}
 	}
+	for position, item := range input.Page.StructuredData {
+		if !item.Valid {
+			add("AUD-13", SeverityError, "JSON-LD syntax is invalid", map[string]any{"format": item.Format, "block_index": position, "parser_error": item.Error})
+			continue
+		}
+		if len(item.StructuralErrors) > 0 {
+			add("AUD-13", SeverityError, "JSON-LD structure is invalid", map[string]any{"format": item.Format, "block_index": position, "errors": item.StructuralErrors, "evidence_truncated": item.EvidenceTruncated})
+		}
+		if item.Format == "json-ld" && hasCompactSchemaType(item.Types) && !hasSchemaContext(item.Contexts) {
+			add("AUD-13", SeverityWarning, "Compact structured-data types have no observed Schema.org context", map[string]any{"format": item.Format, "block_index": position, "types": item.Types, "contexts": item.Contexts, "evidence_truncated": item.EvidenceTruncated})
+		}
+	}
 	return issues
+}
+
+func hasCompactSchemaType(types []string) bool {
+	for _, value := range types {
+		value = strings.TrimSpace(value)
+		if value != "" && !strings.Contains(value, ":") && !strings.HasPrefix(value, "http://") && !strings.HasPrefix(value, "https://") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSchemaContext(contexts []string) bool {
+	for _, value := range contexts {
+		normalized := strings.TrimRight(strings.ToLower(strings.TrimSpace(value)), "/")
+		if normalized == "https://schema.org" || normalized == "http://schema.org" || value == "[inline context]" {
+			return true
+		}
+	}
+	return false
 }
 
 func directiveContains(value, wanted string) bool {

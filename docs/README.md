@@ -17,6 +17,7 @@ This directory is the approved planning source of truth for the secure, local-fi
 11. [Risk register](./RISK_REGISTER.md) — owned security, integrity, quality, release and scale risks.
 12. [Closed beta protocol](./BETA_PROTOCOL.md) — authorised-site validation and stable-release stop conditions.
 13. [Project state checkpoint](./PROJECT_STATE.md) — latest implementation, verification, live-audit and resume state.
+14. [Audit quality roadmap](./QUALITY_ROADMAP.md) — quality-first delivery order, acceptance gates and claim boundaries.
 
 ## Document precedence
 

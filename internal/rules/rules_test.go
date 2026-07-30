@@ -11,7 +11,7 @@ import (
 
 func TestCatalogHasStableMustRuleMetadata(t *testing.T) {
 	t.Parallel()
-	if len(Catalog) != 12 {
+	if len(Catalog) != 13 {
 		t.Fatalf("catalog size = %d", len(Catalog))
 	}
 	for index, item := range Catalog {
@@ -19,6 +19,41 @@ func TestCatalogHasStableMustRuleMetadata(t *testing.T) {
 		if item.ID != expected || item.Version < 1 || item.Remediation == "" || item.Limitations == "" {
 			t.Fatalf("invalid metadata: %+v", item)
 		}
+	}
+}
+
+func TestStructuredDataSyntaxAndContextFindingsAreSeparate(t *testing.T) {
+	t.Parallel()
+	page := extractor.Page{
+		URL:             "https://example.com/",
+		Title:           strings.Repeat("T", 40),
+		MetaDescription: strings.Repeat("D", 100),
+		Canonicals:      []string{"https://example.com/"},
+		Headings:        []extractor.Heading{{Level: 1, Text: "Heading"}},
+		StructuredData: []extractor.StructuredData{
+			{Format: "json-ld", Valid: false, Error: "invalid character"},
+			{Format: "json-ld", Valid: true, Types: []string{"Article"}},
+			{Format: "json-ld", Valid: true, Types: []string{"Product"}, Contexts: []string{"https://schema.org"}},
+			{Format: "json-ld", Valid: true, StructuralErrors: []string{"@type must be a string or an array of strings"}},
+		},
+	}
+	issues := EvaluatePage(PageInput{Page: page, StatusCode: 200, Headers: http.Header{"Content-Security-Policy": []string{"default-src 'self'"}}, InSitemap: true}, DefaultThresholds())
+	var syntax, structure, context int
+	for _, issue := range issues {
+		if issue.RuleID != "AUD-13" {
+			continue
+		}
+		switch issue.Message {
+		case "JSON-LD syntax is invalid":
+			syntax++
+		case "JSON-LD structure is invalid":
+			structure++
+		case "Compact structured-data types have no observed Schema.org context":
+			context++
+		}
+	}
+	if syntax != 1 || structure != 1 || context != 1 {
+		t.Fatalf("AUD-13 findings syntax=%d structure=%d context=%d: %+v", syntax, structure, context, issues)
 	}
 }
 
