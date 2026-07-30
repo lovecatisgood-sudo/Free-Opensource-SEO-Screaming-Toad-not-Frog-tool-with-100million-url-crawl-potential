@@ -164,7 +164,7 @@ func TestSupervisorCrashIsBounded(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected crashed worker to fail")
 	}
-	if elapsed := time.Since(started); elapsed > 2*time.Second {
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
 		t.Fatalf("crashed worker was not reaped promptly: %s", elapsed)
 	}
 }

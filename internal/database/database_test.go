@@ -2,10 +2,30 @@ package database
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestSQLiteFileURLUsesAbsoluteURI(t *testing.T) {
+	abs, err := filepath.Abs(filepath.Join(t.TempDir(), "auditor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dsn := sqliteFileURL(abs, url.Values{"mode": []string{"ro"}})
+	if !strings.HasPrefix(dsn, "file:///") {
+		t.Fatalf("expected absolute SQLite file URI, got %q", dsn)
+	}
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Host != "" || parsed.Query().Get("mode") != "ro" {
+		t.Fatalf("unexpected SQLite file URI: %#v", parsed)
+	}
+}
 
 func TestOpenMigratesAndEnablesWAL(t *testing.T) {
 	t.Parallel()

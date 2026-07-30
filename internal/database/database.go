@@ -30,9 +30,9 @@ func Open(ctx context.Context, path string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("database path: %w", err)
 	}
-	dsn := (&url.URL{Scheme: "file", Path: filepath.ToSlash(abs), RawQuery: url.Values{
+	dsn := sqliteFileURL(abs, url.Values{
 		"_pragma": []string{"busy_timeout(5000)", "foreign_keys(1)", "journal_mode(WAL)", "synchronous(NORMAL)"},
-	}.Encode()}).String()
+	})
 	sqldb, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -60,10 +60,10 @@ func OpenReadOnly(ctx context.Context, path string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("database path: %w", err)
 	}
-	dsn := (&url.URL{Scheme: "file", Path: filepath.ToSlash(abs), RawQuery: url.Values{
+	dsn := sqliteFileURL(abs, url.Values{
 		"mode":    []string{"ro"},
 		"_pragma": []string{"busy_timeout(5000)", "foreign_keys(1)"},
-	}.Encode()}).String()
+	})
 	sqldb, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open read-only sqlite: %w", err)
@@ -77,6 +77,16 @@ func OpenReadOnly(ctx context.Context, path string) (*DB, error) {
 }
 
 func (db *DB) Close() error { return db.sql.Close() }
+
+func sqliteFileURL(abs string, query url.Values) string {
+	path := filepath.ToSlash(abs)
+	// A Windows drive path must be encoded as file:///C:/... . Without the
+	// leading slash, SQLite interprets the drive letter as a URI authority.
+	if filepath.VolumeName(abs) != "" && !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return (&url.URL{Scheme: "file", Path: path, RawQuery: query.Encode()}).String()
+}
 
 func (db *DB) SQL() *sql.DB { return db.sql }
 
