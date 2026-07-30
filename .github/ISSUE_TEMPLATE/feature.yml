@@ -1,0 +1,45 @@
+name: Feature request
+description: Propose an evidence-backed SEO, crawler, MCP, report, or workflow improvement.
+title: "[Feature]: "
+labels: [enhancement, needs-triage]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - SEO audit quality
+        - Crawl coverage or compatibility
+        - MCP and AI-agent workflow
+        - Dashboard and accessibility
+        - Reports and integrations
+        - Scale and performance
+        - Developer experience
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Explain the real workflow or evidence gap before proposing an interface.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and limitations
+      description: For an SEO rule, include references, likely false positives, and what the tool must not claim.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This request preserves authorization, crawl-safety, and local-data boundaries.
+          required: true
+

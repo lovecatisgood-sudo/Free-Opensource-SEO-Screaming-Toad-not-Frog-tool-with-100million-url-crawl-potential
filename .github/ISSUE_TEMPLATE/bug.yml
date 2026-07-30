@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a reproducible crawler, audit, dashboard, CLI, API, or MCP defect.
+title: "[Bug]: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private URLs, client data, crawl databases, or security vulnerabilities.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Crawler or fetch policy
+        - SEO audit rule
+        - Dashboard
+        - MCP server
+        - CLI or local API
+        - Reports or persistence
+        - Build or platform support
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v2.0.0-rc.x or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the observed and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Use a public test fixture or sanitized example.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: OS, architecture, Go/Node version, raw or rendered mode
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed secrets, private targets, client data, and proprietary crawl evidence.
+          required: true
+        - label: This is not a security vulnerability requiring private disclosure.
+          required: true
+

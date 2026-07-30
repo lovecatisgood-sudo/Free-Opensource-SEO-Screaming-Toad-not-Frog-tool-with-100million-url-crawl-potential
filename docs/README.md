@@ -19,6 +19,7 @@ This directory is the approved planning source of truth for the secure, local-fi
 13. [Project state checkpoint](./PROJECT_STATE.md) — latest implementation, verification, live-audit and resume state.
 14. [Audit quality roadmap](./QUALITY_ROADMAP.md) — quality-first delivery order, acceptance gates and claim boundaries.
 15. [MCP agent integration](./MCP.md) — client configuration, tool catalog, workflow and security boundaries.
+16. [Public launch copy](./LAUNCH_COPY.md) — searchable repository copy, community posts and accuracy guardrails.
 
 ## Document precedence
 
