@@ -45,4 +45,34 @@ The last resume processed 48,963 fetch calls and completed global finalisation i
 
 This qualifies the 1-million level as experimental synthetic production-path evidence. It does not make 1 million live URLs a supported capacity, and it does not establish network throughput, multi-host politeness or guarded-fetch performance. A 5–10-million repeated supported-hardware benchmark is still required for the next local-campaign level.
 
+## 5,000,000-URL campaign
+
+Status: passed once on the production persistence, extraction, audit, graph and verification path with the synthetic in-process transport. It started at `2026-07-30T00:39:00.101673427Z`, committed its last 100,000-page segment at `2026-07-30T04:27:26.973594409Z`, and completed global audits at `2026-07-30T04:54:36.42251258Z`. The approximately 4 hour 15 minute 36 second wall-clock window includes controlled restarts and defect investigation, so it is not a fetch-throughput result.
+
+The campaign exposed two scale-dependent defects. The projected-storage stop used an immature early sample and was changed to wait for one full segment while retaining the hard absolute disk limit. Global near-duplicate matching also generated overly broad candidate scans; it now uses five SimHash bands and ten exact two-band passes. A Hamming distance of at most three must preserve at least one band pair, which bounds candidate generation without weakening the configured threshold. The resumed campaign completed with the corrected implementation.
+
+Final read-only `seo-auditor-scale verify` result:
+
+```json
+{
+  "crawl_id": "crawl_scale",
+  "status": "completed",
+  "discovered": 5000000,
+  "committed_pages": 5000000,
+  "unique_url_identities": 5000000,
+  "outstanding": 0,
+  "links": 4999999,
+  "issues": 15884167,
+  "completed_segments": 50,
+  "invalid_segments": 0,
+  "missing_required_fields": 0,
+  "database_integrity": "ok",
+  "passed": true
+}
+```
+
+Final SQLite storage after process close and checkpoint was 11,127,939,072 bytes. All fifty 100,000-URL segment metadata checksums verified; the first was `b2ed1da69bb576a0455f51c58a3afc554e1a8099c2711038eb387320699cfe1b` and the fiftieth was `dd0d42b535513d058a18bfbe9c005856dc0e398ee5653d747c1875f9c2f65629`.
+
+This is stronger experimental evidence for a local multi-million campaign, but one synthetic run on one environment does not qualify 5–10 million URLs as supported. It does not exercise DNS, TLS, redirects, robots, host scheduling, network retries, or renderer isolation. Promotion still requires repeated benchmarks on published supported-hardware profiles.
+
 This report cannot support a 100M+ public claim. That claim remains gated on a separate live guarded-fetch campaign with the complete evidence in `SCALE_STRATEGY.md`.

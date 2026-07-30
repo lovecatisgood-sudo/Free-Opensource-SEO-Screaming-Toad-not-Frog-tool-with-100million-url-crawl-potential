@@ -125,7 +125,7 @@ Every rule declares its execution class, data dependencies, exactness and suppor
 
 The ladder may change based on measured resource behaviour, but levels cannot be promoted without their evidence.
 
-The 1-million experimental synthetic production-path gate passed on 2026-07-30 with exact URL identity reconciliation, ten verified segments, zero outstanding work and SQLite integrity `ok`. The benchmark and its limitations are recorded in [the segmented campaign report](./benchmarks/2026-07-30-segmented-campaign.md). It does not satisfy the live guarded-fetch or 5–10-million support gates.
+The 1-million and single-run 5-million experimental synthetic production-path gates passed on 2026-07-30 with exact URL identity reconciliation, verified segments, zero outstanding work and SQLite integrity `ok`. The benchmark and its limitations are recorded in [the segmented campaign report](./benchmarks/2026-07-30-segmented-campaign.md). The 5-million result is one hardware profile and does not satisfy the repeated supported-hardware or live guarded-fetch gates.
 
 ## 9. 100M qualifying benchmark
 

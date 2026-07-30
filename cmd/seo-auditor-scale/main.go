@@ -47,10 +47,14 @@ func (g *generator) Fetch(_ context.Context, raw string) (fetchpolicy.FetchResul
 
 func main() {
 	if len(os.Args) < 2 {
-		fail(errors.New("usage: seo-auditor-scale <run|resume|status> --database PATH"))
+		fail(errors.New("usage: seo-auditor-scale <run|resume|status|verify> --database PATH"))
 	}
 	if os.Args[1] == "status" {
 		status(os.Args[2:])
+		return
+	}
+	if os.Args[1] == "verify" {
+		verify(os.Args[2:])
 		return
 	}
 	if os.Args[1] == "resume" {
@@ -58,7 +62,7 @@ func main() {
 		return
 	}
 	if os.Args[1] != "run" {
-		fail(errors.New("usage: seo-auditor-scale <run|resume|status> --database PATH"))
+		fail(errors.New("usage: seo-auditor-scale <run|resume|status|verify> --database PATH"))
 	}
 	flags := flag.NewFlagSet("run", flag.ExitOnError)
 	urls := flags.Int64("urls", 1_000_000, "unique synthetic URLs")
@@ -110,6 +114,28 @@ func main() {
 	result := map[string]any{"transport": "synthetic_in_process_not_live_guarded_fetch", "requested_urls": *urls, "fetch_calls": fixture.calls.Load(), "elapsed_seconds": time.Since(started).Seconds(), "verification": verification}
 	_ = json.NewEncoder(os.Stdout).Encode(result)
 	if err := verification.Error(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func verify(arguments []string) {
+	flags := flag.NewFlagSet("verify", flag.ExitOnError)
+	databasePath := flags.String("database", ".data/scale.sqlite3", "benchmark database path")
+	_ = flags.Parse(arguments)
+	ctx := context.Background()
+	db, err := database.OpenReadOnly(ctx, *databasePath)
+	if err != nil {
+		fail(err)
+	}
+	defer db.Close()
+	frontier := database.NewFrontier(db, 16)
+	defer frontier.Close()
+	result, err := frontier.VerifyCampaign(ctx, contracts.ID("crawl_scale"))
+	if err != nil {
+		fail(err)
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(result)
+	if err := result.Error(); err != nil {
 		os.Exit(1)
 	}
 }
