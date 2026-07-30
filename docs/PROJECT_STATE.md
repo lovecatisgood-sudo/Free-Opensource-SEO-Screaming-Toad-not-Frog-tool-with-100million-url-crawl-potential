@@ -1,0 +1,78 @@
+# Project state checkpoint
+
+Checkpoint date: 2026-07-30 (Asia/Ho_Chi_Minh)  
+Branch: `main`  
+Baseline commit before this checkpoint: `14c930a452cf59ce437aa0181b7330e478b16bc7`
+
+## Current outcome
+
+SEO Auditor's locally executable v2.0 implementation is complete as release candidate `2.0.0-rc.3`. The repository contains the approved PRD, architecture and implementation plan plus the implemented Go crawler, SQLite persistence, raw and isolated rendered audits, web UI, local API, CLI, MCP server, reports, recovery, scale prototypes and release tooling.
+
+Do not describe the product as a stable v2.0 release yet. External release qualification remains blocked on closed-beta SEO sampling, clean-machine macOS and Windows runtime tests, a release-signing identity, repeated 5–10-million supported-hardware profiles and the live guarded Stage D campaign.
+
+Do not claim verified 100M+ crawling. Approved language remains “designed toward 100 million URLs.”
+
+## Verification evidence
+
+- Full Go test suite and `go vet` passed.
+- TypeScript tests, type checking and production builds passed.
+- Opt-in real Chromium mediation, hung-page and crash-boundary tests passed.
+- RC3 was cross-built for Linux amd64/arm64, macOS amd64/arm64 and Windows amd64.
+- RC3 includes a CycloneDX SBOM and verified `SHA256SUMS`.
+- RC3 is unsigned.
+- Release artifacts are local at `.artifacts/release/2.0.0-rc.3/`.
+- The Git worktree was clean before this checkpoint was added.
+
+## Scale state
+
+The 1,000,000- and 5,000,000-URL synthetic campaigns passed on the production persistence, extraction, rules, graph, recovery and verification paths. These runs did not use live guarded network fetching.
+
+Final 5M reconciliation:
+
+- status: `completed`;
+- discovered, committed pages and unique URL identities: 5,000,000 each;
+- outstanding work and missing required fields: 0;
+- links: 4,999,999;
+- issues: 15,884,167;
+- completed/invalid segments: 50/0;
+- SQLite integrity: `ok`;
+- final checkpointed storage: 11,127,939,072 bytes.
+
+The run exposed and fixed immature storage projection and unbounded near-duplicate candidate generation. A read-only `seo-auditor-scale verify` command now reproduces campaign reconciliation. Full evidence is in `docs/benchmarks/2026-07-30-segmented-campaign.md`.
+
+Scale Stage B remains in progress because supported capacity requires repeated published hardware profiles. The Stage C coordinator and immutable-segment prototypes are implemented. Stage D live guarded 100M qualification remains pending.
+
+## DJAI Academy live screening
+
+Target: `https://djai.academy`  
+Canonical crawl seed: `https://www.djai.academy/`  
+Crawl ID: `crawl_56d3870acb78b7b8222e189f8007c156`
+
+The bounded raw audit completed with 285 fetched URLs, 220 analysed HTML pages, zero failures and only 2xx fetched responses. It recorded 75 warnings and 28 informational observations:
+
+- 24 non-reciprocal hreflang observations on eight category-filter URLs;
+- 20 duplicate title/description observations on the main and filtered blog views;
+- 18 long and 4 short titles;
+- 7 long and 13 short meta descriptions;
+- 2 near-duplicate template pairs;
+- 7 informational title/H1 matches;
+- 8 filtered blog URLs intentionally absent from the sitemap.
+
+Local ignored evidence:
+
+- database: `.data/live-djai-www/seo-auditor.db`;
+- issue export: `.data/live-djai-www/artifacts/artifact_725cc7fb159cb6db7c12e65a56c2adbb.csv`;
+- page export: `.data/live-djai-www/artifacts/artifact_77ccb6cef0cdeb254a651091f2d3955d.csv`.
+
+Hostinger returned HTTP 403 whenever the client explicitly sent an `Accept-Encoding` header, including `gzip` and `identity`; the same requests returned 200 when that header was omitted. The successful audit temporarily omitted compression negotiation while preserving robots, scope, DNS/IP, redirect, byte and politeness controls. Production source was restored after the run and the repository was clean. A safe, explicit per-profile compression-compatibility mode is a recommended next implementation task; do not silently retry or bypass genuine 403 responses.
+
+## Resume order
+
+1. Read `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_PLAN.md`, this checkpoint and the segmented campaign report.
+2. Confirm `git status --short --branch` is clean and start the capability-free development container.
+3. Implement and test an explicit compression negotiation mode if DJAI or similar Hostinger sites must be crawled without a temporary source adjustment.
+4. Run repeated Stage B campaigns on documented hardware profiles.
+5. Obtain beta participants, clean macOS/Windows environments and a signing identity before promoting RC3.
+6. Run Stage D only with authorized live targets, adequate distributed infrastructure and the complete published evidence contract.
+
+The ignored `open-seo-crawler/` reference remains untrusted and must not be installed, executed or copied. SEonaut was used only as design inspiration; project source remains original.

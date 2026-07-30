@@ -16,6 +16,7 @@ This directory is the approved planning source of truth for the secure, local-fi
 10. [Release and reproducibility](./RELEASE.md) — cross-platform artifacts, SBOM, checksums and signing limits.
 11. [Risk register](./RISK_REGISTER.md) — owned security, integrity, quality, release and scale risks.
 12. [Closed beta protocol](./BETA_PROTOCOL.md) — authorised-site validation and stable-release stop conditions.
+13. [Project state checkpoint](./PROJECT_STATE.md) — latest implementation, verification, live-audit and resume state.
 
 ## Document precedence
 
