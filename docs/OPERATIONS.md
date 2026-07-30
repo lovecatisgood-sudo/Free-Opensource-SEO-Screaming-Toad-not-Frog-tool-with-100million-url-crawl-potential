@@ -40,7 +40,7 @@ For bounded list mode, run `seo-auditor-cli crawl --urls 'https://example.com/a,
 
 ## MCP
 
-Configure an MCP client to execute `seo-auditor-mcp` over stdio. The server never opens an MCP network listener. Tools cover health, projects/profiles, crawl control, summaries, pages, issues, comparisons and reports. Treat crawl-start and lifecycle tools as mutations requiring explicit operator intent. Keep protocol stdout reserved for MCP frames; logs belong on stderr.
+Configure an MCP client to execute `seo-auditor-mcp` over stdio. The server never opens an MCP network listener. Tools cover health, projects/profiles, crawl control and timeline, summaries, pages, links, issues, comparisons, reports and metadata-only diagnostics. Treat crawl-start and lifecycle tools as mutations requiring explicit operator intent. Keep protocol stdout reserved for MCP frames; logs belong on stderr. Complete configuration and agent workflow examples are in [MCP.md](./MCP.md).
 
 ## Storage, privacy and retention
 

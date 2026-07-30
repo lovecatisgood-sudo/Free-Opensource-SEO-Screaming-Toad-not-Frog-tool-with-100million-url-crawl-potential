@@ -223,6 +223,17 @@ Required MCP tools for version 1:
 - `report_export`
 - `artifact_get`
 
+Implemented agent-usability extensions:
+
+- `profile_create`
+- `profile_list`
+- `crawl_pause`
+- `crawl_resume`
+- `crawl_timeline`
+- `page_list`
+- `link_list`
+- `diagnostic_create`
+
 ## 9. Core user journeys
 
 ### 9.1 First audit

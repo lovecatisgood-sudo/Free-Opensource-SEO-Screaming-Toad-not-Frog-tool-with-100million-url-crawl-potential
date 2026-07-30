@@ -18,9 +18,12 @@ The first Q1 slice is implemented in the working tree: AUD-13 detects malformed 
 
 The public interface is now branded **SEO Screaming Toad — Not Frog**, with **DJAI Toad** as an alternate community name. The React dashboard uses the supplied toad and DJAI artwork in a dense technical workbench with project navigation, crawl configuration, progress, evidence tables, comparisons and a separate DJAI services rail. The public capacity phrase remains explicitly theoretical.
 
+The stdio MCP server is agent-operable from a fresh workspace. Beyond the original required tools, it now exposes simplified profile creation/listing, page and link listing, crawl timeline, pause/resume and metadata-only diagnostics. MCP tool annotations label read-only, additive and open-world operations; `health_get` verifies the local API connection. Configuration and workflow guidance are in `docs/MCP.md`.
+
 ## Verification evidence
 
 - Full Go test suite and `go vet` passed.
+- The MCP schema, lifecycle scenario, authenticated loopback API integration and network-disabled test profile passed; a production `seo-auditor-mcp` binary also built successfully.
 - TypeScript tests, type checking and production builds passed.
 - Opt-in real Chromium mediation, hung-page and crash-boundary tests passed.
 - RC4 was built from `5213ad6990574abc65092bed9bc8dbaa80847eee` for Linux amd64/arm64, macOS amd64/arm64 and Windows amd64.

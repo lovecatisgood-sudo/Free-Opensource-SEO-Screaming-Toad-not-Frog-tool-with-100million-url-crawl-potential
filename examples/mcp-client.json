@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "seo-screaming-toad": {
+      "command": "/absolute/path/to/seo-auditor-mcp",
+      "env": {
+        "SEO_AUDITOR_BIND_HOST": "127.0.0.1",
+        "SEO_AUDITOR_BIND_PORT": "7331"
+      }
+    }
+  }
+}

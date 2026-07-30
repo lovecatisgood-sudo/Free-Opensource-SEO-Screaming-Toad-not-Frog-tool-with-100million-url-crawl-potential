@@ -18,6 +18,7 @@ This directory is the approved planning source of truth for the secure, local-fi
 12. [Closed beta protocol](./BETA_PROTOCOL.md) — authorised-site validation and stable-release stop conditions.
 13. [Project state checkpoint](./PROJECT_STATE.md) — latest implementation, verification, live-audit and resume state.
 14. [Audit quality roadmap](./QUALITY_ROADMAP.md) — quality-first delivery order, acceptance gates and claim boundaries.
+15. [MCP agent integration](./MCP.md) — client configuration, tool catalog, workflow and security boundaries.
 
 ## Document precedence
 

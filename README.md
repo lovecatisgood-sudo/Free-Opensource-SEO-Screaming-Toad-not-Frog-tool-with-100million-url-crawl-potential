@@ -24,6 +24,10 @@ make test-offline
 
 See [DEVELOPMENT.md](./DEVELOPMENT.md) for the sandbox boundaries and host-toolchain alternative.
 
+## Connect an AI agent with MCP
+
+Run the local `seo-auditor` supervisor, then configure the AI client to execute `seo-auditor-mcp` over stdio. The MCP server exposes bounded project/profile creation, crawl lifecycle controls, summaries, pages, links, versioned issue evidence, comparisons and managed exports without exposing a generic shell, filesystem or arbitrary network-fetch tool. See the [MCP setup and tool guide](./docs/MCP.md) and [generic client configuration](./examples/mcp-client.json).
+
 ## Safety status
 
 Implemented foundation controls include:
