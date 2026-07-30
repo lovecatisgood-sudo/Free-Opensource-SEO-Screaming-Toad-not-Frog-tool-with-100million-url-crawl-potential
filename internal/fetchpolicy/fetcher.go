@@ -20,6 +20,7 @@ type FetchLimits struct {
 	MaximumCompressedBytes  int64
 	MaximumDecodedBytes     int64
 	MaximumCompressionRatio float64
+	OmitAcceptEncoding      bool
 }
 
 func DefaultFetchLimits() FetchLimits {
@@ -118,7 +119,9 @@ func (f *Fetcher) Fetch(ctx context.Context, raw string) (FetchResult, error) {
 		}
 		request.Header.Set("User-Agent", f.userAgent)
 		request.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.1")
-		request.Header.Set("Accept-Encoding", "gzip")
+		if !f.limits.OmitAcceptEncoding {
+			request.Header.Set("Accept-Encoding", "gzip")
+		}
 		response, err := f.client.Do(request)
 		if err != nil {
 			return FetchResult{}, fmt.Errorf("perform request: %w", err)

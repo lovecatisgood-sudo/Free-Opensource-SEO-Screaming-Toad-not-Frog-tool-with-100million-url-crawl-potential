@@ -90,6 +90,7 @@ func runAPICommand(ctx context.Context, command string, arguments []string) (any
 		depth := flags.Int("max-depth", 50, "maximum depth")
 		subdomains := flags.Bool("allow-subdomains", false, "include subdomains")
 		rendered := flags.Bool("rendered", false, "enable rendered mode")
+		responseCompression := flags.String("response-compression", "gzip", "response compression: gzip or disabled")
 		exclude := flags.String("exclude-path", "", "exclude path regex")
 		if err := flags.Parse(arguments); err != nil {
 			return nil, err
@@ -104,7 +105,7 @@ func runAPICommand(ctx context.Context, command string, arguments []string) (any
 		if *rendered {
 			mode = "rendered"
 		}
-		configuration := contracts.CrawlConfiguration{SeedURL: *seed, AllowSubdomains: *subdomains, RenderingMode: mode, Limits: limits}
+		configuration := contracts.CrawlConfiguration{SeedURL: *seed, AllowSubdomains: *subdomains, RenderingMode: mode, ResponseCompression: *responseCompression, Limits: limits}
 		if *exclude != "" {
 			configuration.ExcludePathRegex = []string{*exclude}
 		}
@@ -279,6 +280,7 @@ func runStandaloneCrawl(ctx context.Context, arguments []string) (application.Cr
 	seedList := flags.String("urls", "", "comma or newline separated list-mode seed URLs")
 	name := flags.String("name", "Audit", "project name")
 	maximumURLs := flags.Int64("max-urls", 10_000, "maximum URLs")
+	responseCompression := flags.String("response-compression", "gzip", "response compression: gzip or disabled")
 	if err := flags.Parse(arguments); err != nil {
 		return application.CrawlResult{}, err
 	}
@@ -304,7 +306,7 @@ func runStandaloneCrawl(ctx context.Context, arguments []string) (application.Cr
 	limits := contracts.DefaultCrawlLimits()
 	limits.MaximumURLs = *maximumURLs
 	limits.MaximumDuration = 24 * time.Hour
-	return service.Crawl(ctx, application.CrawlRequest{ProjectName: *name, SeedURL: *seed, SeedURLs: seeds, Limits: limits})
+	return service.Crawl(ctx, application.CrawlRequest{ProjectName: *name, SeedURL: *seed, SeedURLs: seeds, ResponseCompression: *responseCompression, Limits: limits})
 }
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: seo-auditor-cli <version|crawl|project-create|project-list|profile-create|profile-list|scope-preview|crawl-start|crawl-list|crawl-status|crawl-timeline|crawl-pause|crawl-resume|crawl-cancel|audit-summary|issue-list|issue-explain|page-list|page-get|crawl-compare|report-export|diagnostic-create|artifact-get> [options]")

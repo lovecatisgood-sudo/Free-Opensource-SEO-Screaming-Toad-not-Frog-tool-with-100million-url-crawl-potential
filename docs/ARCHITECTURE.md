@@ -219,7 +219,7 @@ Exporters query with keyset pagination and stream output. XLSX has explicit row/
 | Entity | Purpose |
 |---|---|
 | `project` | Named audit boundary and lifecycle. |
-| `crawl_profile` | Versioned scope, rate, limit, user-agent, and extraction settings. |
+| `crawl_profile` | Versioned scope, rate, limit, user-agent, response-compression, rendering, and extraction settings. |
 | `crawl` | One immutable configuration snapshot plus status and aggregate counters. |
 | `url` | Normalised URL identity within a project. |
 | `crawl_url` | Per-crawl URL state, depth, discovery source, and fetch outcome. |
@@ -439,7 +439,7 @@ The distributed design must preserve host ownership: at any moment one logical s
 
 Page-local rules run as records commit. Graph and whole-crawl rules use incremental aggregates where exact semantics are proven; otherwise they run against the completed global dataset. Approximate structures such as Bloom filters may reduce reads but cannot be the authoritative deduplication source because false positives would silently omit pages.
 
-The complete scale design and qualifying benchmark are defined in [SCALE_STRATEGY.md](./SCALE_STRATEGY.md).
+The optional theoretical scale design and any future validation protocol are documented in [SCALE_STRATEGY.md](./SCALE_STRATEGY.md); neither is a v2.0 release gate or supported-capacity claim.
 
 ## 16. Architecture conformance and change control
 

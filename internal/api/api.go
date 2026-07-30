@@ -143,14 +143,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var input struct {
-			URL             string   `json:"url"`
-			URLs            []string `json:"urls"`
-			Name            string   `json:"name"`
-			AllowSubdomains bool     `json:"allow_subdomains"`
-			MaximumURLs     int64    `json:"maximum_urls"`
-			MaximumDepth    *int     `json:"maximum_depth"`
-			Concurrency     *int     `json:"concurrency"`
-			PerHost         *int     `json:"per_host"`
+			URL                 string   `json:"url"`
+			URLs                []string `json:"urls"`
+			Name                string   `json:"name"`
+			AllowSubdomains     bool     `json:"allow_subdomains"`
+			MaximumURLs         int64    `json:"maximum_urls"`
+			MaximumDepth        *int     `json:"maximum_depth"`
+			Concurrency         *int     `json:"concurrency"`
+			PerHost             *int     `json:"per_host"`
+			ResponseCompression string   `json:"response_compression"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
 		decoder := json.NewDecoder(r.Body)
@@ -177,7 +178,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid_argument", "url or urls is required")
 			return
 		}
-		result, err := h.backend.StartCrawl(r.Context(), application.CrawlRequest{ProjectName: input.Name, SeedURL: input.URL, SeedURLs: input.URLs, AllowSubdomains: input.AllowSubdomains, Limits: limits})
+		result, err := h.backend.StartCrawl(r.Context(), application.CrawlRequest{ProjectName: input.Name, SeedURL: input.URL, SeedURLs: input.URLs, AllowSubdomains: input.AllowSubdomains, ResponseCompression: input.ResponseCompression, Limits: limits})
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
 			return

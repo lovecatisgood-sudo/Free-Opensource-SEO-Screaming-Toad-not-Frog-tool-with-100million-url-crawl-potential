@@ -9,7 +9,7 @@ This directory is the approved planning source of truth for the secure, local-fi
 3. [Final implementation plan](./IMPLEMENTATION_PLAN.md) — sequence, milestones, traceability, tests, and release gates.
 4. [SEonaut reference review](./references/SEONAUT_REVIEW.md) — reusable ideas and explicit non-reuse boundaries from the Go crawler.
 5. [ADR-001: Go core](./adr/ADR-001-go-core.md) — accepted language and runtime decision.
-6. [100M scale strategy](./SCALE_STRATEGY.md) — staged path to verified 100-million-URL crawl campaigns without reducing audit quality.
+6. [Theoretical 100M+ architecture note](./SCALE_STRATEGY.md) — optional scale research without a supported-capacity claim.
 7. [Operations guide](./OPERATIONS.md) — installation, CLI/MCP use, updates, storage, backup and troubleshooting.
 8. [Security model](./SECURITY_MODEL.md) — trust boundaries, controls and residual risks.
 9. [Audit rule catalog](./RULE_CATALOG.md) — versioned rule coverage and limitations.
@@ -36,5 +36,5 @@ Changes that alter product scope, security boundaries, supported platforms, or s
 - SQLite/WAL for the version-one local application.
 - Loopback-only API and MCP over stdio.
 - Version-one supported target: 100,000 URLs with bounded memory and durable recovery.
-- Post-version-one north star: a published, qualifying 100M+ URL campaign without reducing audit quality.
-- No “100M+ verified” public claim until the benchmark gate passes.
+- The segmented/distributed design has theoretical potential beyond 100M URLs, but this is not a tested or supported capacity.
+- Do not make tested, verified, supported or guaranteed 100M+ claims.

@@ -82,6 +82,7 @@ type CrawlRequest struct {
 	AllowSubdomains                                                          bool
 	IncludePathRegex, ExcludePathRegex, IncludeQueryRegex, ExcludeQueryRegex []string
 	Limits                                                                   contracts.CrawlLimits
+	ResponseCompression                                                      string
 }
 
 type CrawlResult struct {
@@ -210,7 +211,7 @@ func (s *Service) prepare(ctx context.Context, request CrawlRequest) (preparedCr
 		SeedURL: seed.RequestKey, AllowedHosts: hosts, AllowSubdomains: request.AllowSubdomains,
 		IncludePathRegex: request.IncludePathRegex, ExcludePathRegex: request.ExcludePathRegex,
 		IncludeQueryRegex: request.IncludeQueryRegex, ExcludeQueryRegex: request.ExcludeQueryRegex,
-		UserAgent: UserAgent, RenderingMode: "raw", Limits: request.Limits,
+		UserAgent: UserAgent, RenderingMode: "raw", ResponseCompression: request.ResponseCompression, Limits: request.Limits,
 	}
 	var err error
 	configuration, err = validateConfiguration(configuration)
@@ -292,6 +293,7 @@ func (s *Service) buildPrepared(ctx context.Context, result CrawlResult, configu
 	fetchLimits := fetchpolicy.DefaultFetchLimits()
 	fetchLimits.MaximumDecodedBytes = configuration.Limits.MaximumBodyBytes
 	fetchLimits.MaximumCompressedBytes = min(fetchLimits.MaximumCompressedBytes, configuration.Limits.MaximumBodyBytes)
+	fetchLimits.OmitAcceptEncoding = configuration.EffectiveResponseCompression() == "disabled"
 	rawFetcher, err := fetchpolicy.NewFetcher(guard, transport, fetchLimits, configuration.UserAgent)
 	if err != nil {
 		return preparedCrawl{}, err

@@ -51,11 +51,22 @@ type CrawlConfiguration struct {
 	ExcludeQueryRegex []string `json:"exclude_query_regex,omitempty"`
 	UserAgent         string   `json:"user_agent"`
 	RenderingMode     string   `json:"rendering_mode"`
+	// ResponseCompression controls outbound Accept-Encoding negotiation.
+	// Empty and "gzip" request gzip; "disabled" omits the header for servers
+	// whose CDN rejects explicit compression negotiation.
+	ResponseCompression string `json:"response_compression,omitempty"`
 	// NearDuplicateDistance is the maximum SimHash Hamming distance (0-3).
 	// Nil selects the default of 3; zero disables near-duplicate findings.
 	NearDuplicateDistance *int        `json:"near_duplicate_distance,omitempty"`
 	SegmentSize           int64       `json:"segment_size,omitempty"`
 	Limits                CrawlLimits `json:"limits"`
+}
+
+func (c CrawlConfiguration) EffectiveResponseCompression() string {
+	if c.ResponseCompression == "" {
+		return "gzip"
+	}
+	return c.ResponseCompression
 }
 
 func (c CrawlConfiguration) EffectiveNearDuplicateDistance() int {

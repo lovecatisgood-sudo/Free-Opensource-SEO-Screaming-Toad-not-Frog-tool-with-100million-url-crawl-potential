@@ -58,6 +58,10 @@ func validateConfiguration(configuration contracts.CrawlConfiguration) (contract
 	if configuration.RenderingMode != "raw" && configuration.RenderingMode != "rendered" {
 		return configuration, errors.New("rendering mode must be raw or rendered")
 	}
+	configuration.ResponseCompression = configuration.EffectiveResponseCompression()
+	if configuration.ResponseCompression != "gzip" && configuration.ResponseCompression != "disabled" {
+		return configuration, errors.New("response compression must be gzip or disabled")
+	}
 	if distance := configuration.EffectiveNearDuplicateDistance(); distance < 0 || distance > 3 {
 		return configuration, errors.New("near-duplicate distance must be between 0 and 3")
 	}

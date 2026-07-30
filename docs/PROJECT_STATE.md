@@ -2,15 +2,15 @@
 
 Checkpoint date: 2026-07-30 (Asia/Ho_Chi_Minh)  
 Branch: `main`  
-Baseline commit before this checkpoint: `14c930a452cf59ce437aa0181b7330e478b16bc7`
+Previous checkpoint commit: `f96d557`
 
 ## Current outcome
 
 SEO Auditor's locally executable v2.0 implementation is complete as release candidate `2.0.0-rc.3`. The repository contains the approved PRD, architecture and implementation plan plus the implemented Go crawler, SQLite persistence, raw and isolated rendered audits, web UI, local API, CLI, MCP server, reports, recovery, scale prototypes and release tooling.
 
-Do not describe the product as a stable v2.0 release yet. External release qualification remains blocked on closed-beta SEO sampling, clean-machine macOS and Windows runtime tests, a release-signing identity, repeated 5–10-million supported-hardware profiles and the live guarded Stage D campaign.
+Do not describe the product as a stable v2.0 release yet. External release qualification remains blocked on additional closed-beta SEO sampling, clean-machine macOS and Windows runtime tests, and a release-signing identity.
 
-Do not claim verified 100M+ crawling. Approved language remains “designed toward 100 million URLs.”
+Repeated 5–10-million campaigns and live 100M qualification were removed from v2.0 scope by product decision. Approved language is: “Architecturally designed for segmented campaigns beyond 100 million URLs; this is a theoretical scalability target, not a tested, supported or guaranteed capacity.”
 
 ## Verification evidence
 
@@ -40,7 +40,7 @@ Final 5M reconciliation:
 
 The run exposed and fixed immature storage projection and unbounded near-duplicate candidate generation. A read-only `seo-auditor-scale verify` command now reproduces campaign reconciliation. Full evidence is in `docs/benchmarks/2026-07-30-segmented-campaign.md`.
 
-Scale Stage B remains in progress because supported capacity requires repeated published hardware profiles. The Stage C coordinator and immutable-segment prototypes are implemented. Stage D live guarded 100M qualification remains pending.
+The Stage C coordinator and immutable-segment prototypes are implemented. Additional Stage B/D campaigns are optional research rather than release gates.
 
 ## DJAI Academy live screening
 
@@ -64,15 +64,14 @@ Local ignored evidence:
 - issue export: `.data/live-djai-www/artifacts/artifact_725cc7fb159cb6db7c12e65a56c2adbb.csv`;
 - page export: `.data/live-djai-www/artifacts/artifact_77ccb6cef0cdeb254a651091f2d3955d.csv`.
 
-Hostinger returned HTTP 403 whenever the client explicitly sent an `Accept-Encoding` header, including `gzip` and `identity`; the same requests returned 200 when that header was omitted. The successful audit temporarily omitted compression negotiation while preserving robots, scope, DNS/IP, redirect, byte and politeness controls. Production source was restored after the run and the repository was clean. A safe, explicit per-profile compression-compatibility mode is a recommended next implementation task; do not silently retry or bypass genuine 403 responses.
+Hostinger returned HTTP 403 whenever the client explicitly sent an `Accept-Encoding` header, including `gzip` and `identity`; the same requests returned 200 when that header was omitted. SEO Auditor now provides an explicit `gzip|disabled` response-compression profile setting in the UI, CLI, API and stored configuration. Disabled mode omits the header while preserving robots, scope, DNS/IP, redirect, byte and politeness controls; it does not retry or bypass genuine 403 responses. A live 10-URL regression completed 10/10 pages with zero failures and a clean `limit_reached` terminal state.
 
 ## Resume order
 
 1. Read `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_PLAN.md`, this checkpoint and the segmented campaign report.
 2. Confirm `git status --short --branch` is clean and start the capability-free development container.
-3. Implement and test an explicit compression negotiation mode if DJAI or similar Hostinger sites must be crawled without a temporary source adjustment.
-4. Run repeated Stage B campaigns on documented hardware profiles.
-5. Obtain beta participants, clean macOS/Windows environments and a signing identity before promoting RC3.
-6. Run Stage D only with authorized live targets, adequate distributed infrastructure and the complete published evidence contract.
+3. Obtain more authorized beta targets and retain comparison evidence.
+4. Obtain clean macOS/Windows environments and a signing identity before stable promotion.
+5. Treat any additional multi-million or distributed campaigns as separately approved optional research.
 
 The ignored `open-seo-crawler/` reference remains untrusted and must not be installed, executed or copied. SEonaut was used only as design inspiration; project source remains original.

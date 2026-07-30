@@ -28,13 +28,15 @@ seo-auditor-cli crawl-status --crawl CRAWL_ID
 seo-auditor-cli audit-summary --crawl CRAWL_ID
 ```
 
-Profiles control the seed URL, host/subdomain scope, excluded path expressions, raw or rendered mode, concurrency, depth, URL ceiling, duration, response-size and retry budgets. Preview unfamiliar scope rules before starting. A project owns its profiles and crawl history.
+Profiles control the seed URL, host/subdomain scope, excluded path expressions, raw or rendered mode, response compression, concurrency, depth, URL ceiling, duration, response-size and retry budgets. Preview unfamiliar scope rules before starting. A project owns its profiles and crawl history.
+
+The default response-compression mode requests gzip and enforces compressed, decoded-size and expansion-ratio limits. If a verified CDN incompatibility returns an erroneous response whenever `Accept-Encoding` is present, create the profile with `--response-compression disabled` or select “Disabled for incompatible CDNs” in the UI. Disabled mode omits the negotiation header but retains response-size, timeout, redirect, scope, DNS/IP, robots and disk controls. It is explicit and never retries or bypasses a genuine 403 response.
 
 ## CLI and reports
 
 `seo-auditor-cli` emits JSON on stdout and errors as JSON on stderr. Run it without a command for the command list. Important read workflows include `crawl-status`, `crawl-timeline`, `audit-summary`, `page-list`, `page-get`, `issue-list`, and `issue-explain`. Lifecycle commands are `crawl-pause`, `crawl-resume`, and `crawl-cancel`. `report-export` supports CSV, NDJSON and XLSX managed artifacts. `diagnostic-create` writes a metadata-only support artifact; use `artifact-get` to inspect its managed path.
 
-For bounded list mode, run `seo-auditor-cli crawl --urls 'https://example.com/a,https://example.org/b' --max-urls 10000`. List order is retained, normalized duplicates are removed, and the allowed-host set is derived from the supplied URLs. The local API accepts the equivalent `urls` array. A list is limited to 10,000 seeds and still obeys all target guards, robots rules, crawl limits and per-host politeness.
+For bounded list mode, run `seo-auditor-cli crawl --urls 'https://example.com/a,https://example.org/b' --max-urls 10000`. List order is retained, normalized duplicates are removed, and the allowed-host set is derived from the supplied URLs. The local API accepts the equivalent `urls` array. A list is limited to 10,000 seeds and still obeys all target guards, robots rules, crawl limits and per-host politeness. Standalone mode also accepts `--response-compression gzip|disabled`.
 
 ## MCP
 

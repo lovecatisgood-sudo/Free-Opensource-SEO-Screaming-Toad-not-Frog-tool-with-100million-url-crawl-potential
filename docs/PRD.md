@@ -44,7 +44,7 @@ Make a technical site audit as repeatable and inspectable as running a test suit
 6. Be safe to install and run on a personal workstation by default.
 7. Remain useful without accounts, API keys, telemetry, or cloud services.
 8. Respect websites through robots controls, rate limits, transparent user agents, and bounded concurrency.
-9. Evolve toward verified crawl campaigns above 100 million unique URLs while preserving the same evidence, safety, recovery, and audit-quality contract used for smaller crawls.
+9. Keep the architecture theoretically extensible to segmented campaigns above 100 million unique URLs without making that an implemented, supported or release-blocking capacity claim.
 
 ### 4.2 Initial success metrics
 
@@ -56,17 +56,17 @@ Make a technical site audit as repeatable and inspectable as running a test suit
 - Interrupted crawls recover to an explicit resumable or terminal state; they never remain silently “running.”
 - Repeated crawls with identical fixtures and configuration produce semantically identical results.
 
-### 4.3 North-star scale goal
+### 4.3 Theoretical scale direction
 
-SEO Auditor's long-term scale goal is to complete and audit crawl campaigns exceeding 100 million unique URLs. This is a post-version-1 goal and will require segmented persistent processing and, at the highest scale, distributed workers and analytical storage.
+SEO Auditor's segmentation, durable identity, coordinator and immutable-result designs could theoretically be extended to crawl campaigns exceeding 100 million unique URLs. This is an architectural hypothesis, not a v2.0 requirement, supported limit, delivery commitment or performance guarantee.
 
-The goal is not satisfied by counting discoveries or combining unrelated crawls. A qualifying campaign must retain global deduplication, crawl scope, robots decisions, redirect evidence, link relationships, issue evidence, checkpoints, recovery, and a consistent final state. The public “100M+” capability may be advertised only after the benchmark and quality gates in the scale strategy have passed on a released build.
+Public language must say that the design has theoretical potential beyond 100 million URLs and that the capacity is untested and unsupported. The project does not claim that one campaign can currently complete that volume. Any future capacity claim would require a separately approved PRD and evidence program.
 
 ## 5. Non-goals for version 1
 
 - Complete feature parity with Screaming Frog, Sitebulb, Ahrefs, or Semrush.
 - Guaranteed million-URL crawling.
-- Advertising a 100M+ verified capacity before a reproducible qualifying benchmark has passed.
+- Advertising a tested, verified, supported or guaranteed 100M+ capacity.
 - A hosted multi-tenant SaaS.
 - Rank tracking, backlink indexes, or keyword-volume databases.
 - Automatic modification of audited websites.
@@ -113,7 +113,7 @@ Priorities use MoSCoW: Must, Should, Could, Won't for version 1.
 | ID | Requirement | Priority |
 |---|---|---|
 | PRJ-01 | Create, rename, archive, and delete a local project. | Must |
-| PRJ-02 | Store seed URL, allowed hosts, include/exclude rules, limits, user agent, and rendering mode in a reusable crawl profile. | Must |
+| PRJ-02 | Store seed URL, allowed hosts, include/exclude rules, limits, user agent, rendering mode, and explicit response-compression mode in a reusable crawl profile. | Must |
 | PRJ-03 | Preview the effective crawl scope before starting. | Must |
 | PRJ-04 | Import and export a non-secret crawl profile as JSON. | Should |
 | PRJ-05 | Support multiple profiles per project. | Should |
@@ -281,7 +281,7 @@ Required MCP tools for version 1:
 
 - TLS certificates and hostnames are verified. There is no automatic insecure fallback.
 - Response headers and streaming byte limits are enforced before buffering content.
-- Decompression ratio and total decompressed-size limits protect against compressed bombs.
+- Gzip mode uses decompression-ratio and total decompressed-size limits to protect against compressed bombs. An explicit disabled mode may omit `Accept-Encoding` for verified CDN incompatibilities while retaining identity-response byte limits; it never retries or bypasses access-control responses.
 - Redirect count, header size, URL length, document size, and request duration are bounded.
 - Unsupported protocols and content are recorded and skipped.
 - Cookies are disabled by default and scoped to a crawl when enabled later.
@@ -403,8 +403,8 @@ Version 1 is releasable only when:
 - PDF extraction.
 - Signed desktop packages.
 - Authenticated remote MCP/HTTP deployment for teams.
-- Segmented single-machine campaigns progressing from 1 million to 10 million URLs.
-- Distributed crawl campaigns verified above 100 million unique URLs.
+- Optional segmented single-machine performance research beyond the completed 5-million synthetic campaign.
+- Optional distributed-campaign research informed by the theoretical 100M+ architecture note.
 - Partitioned analytical storage and object-backed immutable result segments for very large campaigns.
 - Plugin API for trusted, signed rule packs.
 

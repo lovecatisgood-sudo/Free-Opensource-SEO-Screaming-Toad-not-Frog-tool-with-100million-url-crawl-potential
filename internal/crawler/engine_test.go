@@ -147,6 +147,49 @@ func TestEngineCrawlsBoundedGraphOnce(t *testing.T) {
 	}
 }
 
+func TestEngineTreatsURLCeilingAsTerminalState(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "auditor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	frontier := database.NewFrontier(db, 8)
+	t.Cleanup(frontier.Close)
+	projectID := contracts.ID("project_url_limit")
+	crawlID := contracts.ID("crawl_url_limit")
+	if err := frontier.CreateProject(ctx, projectID, "URL limit"); err != nil {
+		t.Fatal(err)
+	}
+	seed, _ := fetchpolicy.NormalizeURL("https://example.com/")
+	limits := contracts.DefaultCrawlLimits()
+	limits.MaximumURLs = 1
+	limits.GlobalConcurrency = 1
+	limits.PerHostConcurrency = 1
+	limits.MinimumHostDelay = 0
+	configuration := contracts.CrawlConfiguration{SeedURL: seed.RequestKey, AllowedHosts: []string{seed.URL.Hostname()}, UserAgent: "test", RenderingMode: "raw", Limits: limits}
+	if err := frontier.CreateCrawl(ctx, crawlID, projectID, "", seed, configuration); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := frontier.Enqueue(ctx, database.Discovery{CrawlID: crawlID, ProjectID: projectID, URL: seed, DiscoveryKind: "seed", MaximumURLs: 1}); err != nil {
+		t.Fatal(err)
+	}
+	scope, _ := fetchpolicy.CompileScope(fetchpolicy.ScopeConfig{AllowedHosts: []string{"example.com"}})
+	fetcher := &mapFetcher{pages: map[string]string{"https://example.com/": `<a href="/beyond-limit">next</a>`}, calls: make(map[string]int)}
+	engine := &Engine{Frontier: frontier, Fetcher: fetcher, Scope: scope, LeaseTime: time.Minute}
+	if err := engine.Run(ctx, RunRequest{CrawlID: crawlID, ProjectID: projectID, Limits: limits, WorkerID: "limit-test"}); err != nil {
+		t.Fatalf("Run returned a normal URL ceiling as an error: %v", err)
+	}
+	progress, err := frontier.Progress(ctx, crawlID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.Status != contracts.CrawlLimited || progress.TerminalReason != "url_limit" || progress.Discovered != 1 || progress.Analysed != 1 {
+		t.Fatalf("progress=%+v", progress)
+	}
+}
+
 func TestProjectedStorageBytesRoundsUpAndSaturates(t *testing.T) {
 	t.Parallel()
 	if got := projectedStorageBytes(1_001, 1_000, 100_000); got != 100_100 {

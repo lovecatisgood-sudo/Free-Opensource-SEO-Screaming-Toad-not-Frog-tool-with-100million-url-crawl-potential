@@ -17,18 +17,19 @@ import (
 )
 
 type diagnosticBundle struct {
-	GeneratedAt       string                      `json:"generated_at"`
-	Version           string                      `json:"version"`
-	Commit            string                      `json:"commit"`
-	CrawlID           contracts.ID                `json:"crawl_id"`
-	Summary           database.AuditSummary       `json:"summary"`
-	RenderingMode     string                      `json:"rendering_mode"`
-	Limits            contracts.CrawlLimits       `json:"limits"`
-	AllowedHostCount  int                         `json:"allowed_host_count"`
-	DatabaseIntegrity string                      `json:"database_integrity"`
-	Events            []database.CrawlEventRecord `json:"events"`
-	Segments          []database.CampaignSegment  `json:"segments"`
-	ContentExcluded   bool                        `json:"crawled_content_excluded"`
+	GeneratedAt         string                      `json:"generated_at"`
+	Version             string                      `json:"version"`
+	Commit              string                      `json:"commit"`
+	CrawlID             contracts.ID                `json:"crawl_id"`
+	Summary             database.AuditSummary       `json:"summary"`
+	RenderingMode       string                      `json:"rendering_mode"`
+	ResponseCompression string                      `json:"response_compression"`
+	Limits              contracts.CrawlLimits       `json:"limits"`
+	AllowedHostCount    int                         `json:"allowed_host_count"`
+	DatabaseIntegrity   string                      `json:"database_integrity"`
+	Events              []database.CrawlEventRecord `json:"events"`
+	Segments            []database.CampaignSegment  `json:"segments"`
+	ContentExcluded     bool                        `json:"crawled_content_excluded"`
 }
 
 // Diagnostic creates a managed metadata-only artifact. It intentionally
@@ -68,7 +69,7 @@ func (s *Service) Diagnostic(ctx context.Context, crawlID contracts.ID) (Artifac
 	}
 	bundle := diagnosticBundle{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), Version: version.Version, Commit: version.Commit,
-		CrawlID: crawlID, Summary: summary, RenderingMode: stored.Configuration.RenderingMode,
+		CrawlID: crawlID, Summary: summary, RenderingMode: stored.Configuration.RenderingMode, ResponseCompression: stored.Configuration.EffectiveResponseCompression(),
 		Limits: stored.Configuration.Limits, AllowedHostCount: len(stored.Configuration.AllowedHosts),
 		DatabaseIntegrity: integrity, Events: events, Segments: segments, ContentExcluded: true,
 	}

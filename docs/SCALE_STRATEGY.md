@@ -1,14 +1,14 @@
-# SEO Auditor 100M+ scale strategy
+# SEO Auditor theoretical 100M+ architecture note
 
-Status: Final supporting strategy  
+Status: Optional research note; not a release plan or capacity claim
 Version: 2.0  
 Date: 2026-07-30
 
 ## 1. Objective
 
-Enable one SEO crawl campaign to fetch, analyse, persist, recover, query, and complete more than 100 million unique URLs without weakening the product's security, politeness, evidence, or audit-correctness guarantees.
+Describe how one SEO crawl campaign could theoretically fetch, analyse, persist, recover and query more than 100 million unique URLs without weakening security, politeness, evidence or audit correctness.
 
-This is a staged post-version-1 objective. Version 1 establishes the bounded, persistent primitives at 100,000 URLs. Larger capacities become supported only after their own qualifying tests.
+This is not a v2.0 objective, release gate, supported limit or guarantee. It records architectural potential for optional future research. Current evidence remains limited to the published synthetic campaigns.
 
 ## 2. Definition of a crawl campaign
 
@@ -113,23 +113,23 @@ Rules are classified by scale behaviour:
 
 Every rule declares its execution class, data dependencies, exactness and supported scale. Rules that cannot retain their semantics at 100M are disabled with an explicit coverage notice rather than silently approximated.
 
-## 8. Capacity ladder
+## 8. Evidence and theoretical levels
 
-| Level | Target | Evidence required |
+| Level | Target | Current meaning |
 |---|---:|---|
 | Version-1 supported | 100,000 | Release regression and endurance suite. |
 | Local campaign experimental | 1 million | Published single-machine benchmark and recovery test. |
-| Local campaign supported | 5–10 million | Repeated benchmark across supported hardware profiles. |
-| Distributed experimental | 25–50 million | Multi-worker failure/recovery and query validation. |
-| North-star verified | More than 100 million | Public qualifying benchmark on the advertised release. |
+| Local campaign experimental evidence | 5 million | One synthetic production-path run; not live or supported capacity. |
+| Distributed architecture prototype | Unspecified | Coordinator and immutable-segment primitives, without a capacity claim. |
+| Theoretical architecture direction | More than 100 million | Untested design potential only; not supported or guaranteed. |
 
-The ladder may change based on measured resource behaviour, but levels cannot be promoted without their evidence.
+The table is descriptive rather than a promotion ladder. v2.0 completion does not require additional large-scale campaigns.
 
-The 1-million and single-run 5-million experimental synthetic production-path gates passed on 2026-07-30 with exact URL identity reconciliation, verified segments, zero outstanding work and SQLite integrity `ok`. The benchmark and its limitations are recorded in [the segmented campaign report](./benchmarks/2026-07-30-segmented-campaign.md). The 5-million result is one hardware profile and does not satisfy the repeated supported-hardware or live guarded-fetch gates.
+The 1-million and single-run 5-million experimental synthetic production-path campaigns passed on 2026-07-30 with exact URL identity reconciliation, verified segments, zero outstanding work and SQLite integrity `ok`. The benchmark and its limitations are recorded in [the segmented campaign report](./benchmarks/2026-07-30-segmented-campaign.md).
 
-## 9. 100M qualifying benchmark
+## 9. Optional future validation protocol
 
-The qualifying benchmark publishes:
+If a future project ever seeks a supported capacity claim, a new approved PRD should require evidence including:
 
 - exact unique qualifying URL count;
 - product version, commit, schema and rule versions;
@@ -158,15 +158,11 @@ all required rule and schema versions are present
 
 ## 10. Public capability language
 
-Before the qualifying benchmark:
+Approved language:
 
-> Designed for segmented crawl campaigns from 100 URLs toward 100 million URLs.
+> Architecturally designed for segmented campaigns beyond 100 million URLs; this is a theoretical scalability target, not a tested, supported or guaranteed capacity.
 
-After the qualifying benchmark:
-
-> Open-source SEO crawler verified on a 100M+ URL campaign.
-
-Avoid “unlimited,” “number one,” and unqualified comparisons. Capacity claims link directly to the benchmark report and identify whether they refer to raw or rendered crawling.
+Avoid “unlimited,” “number one,” “verified 100M,” “supports 100M,” “can crawl 100M,” and unqualified comparisons. The 1M and 5M evidence must always be labelled synthetic production-path evidence rather than live capacity.
 
 ## 11. Stop conditions
 

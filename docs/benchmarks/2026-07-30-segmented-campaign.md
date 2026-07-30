@@ -43,7 +43,7 @@ Final verifier result:
 
 The last resume processed 48,963 fetch calls and completed global finalisation in 418.13 seconds. Final SQLite storage was 2,182,422,528 bytes. All ten 100,000-URL segment metadata checksums verified; the first was `23e1e4dd08ee065df929676bf567921ee3643a66b3b1c503905d39345863cb27` and the tenth was `da714b806cf2225bda2a64d3e858dfae6da6f76f13f6b38d49372ae27361386a`.
 
-This qualifies the 1-million level as experimental synthetic production-path evidence. It does not make 1 million live URLs a supported capacity, and it does not establish network throughput, multi-host politeness or guarded-fetch performance. A 5–10-million repeated supported-hardware benchmark is still required for the next local-campaign level.
+This qualifies the 1-million level as experimental synthetic production-path evidence. It does not make 1 million live URLs a supported capacity, and it does not establish network throughput, multi-host politeness or guarded-fetch performance.
 
 ## 5,000,000-URL campaign
 
@@ -73,6 +73,6 @@ Final read-only `seo-auditor-scale verify` result:
 
 Final SQLite storage after process close and checkpoint was 11,127,939,072 bytes. All fifty 100,000-URL segment metadata checksums verified; the first was `b2ed1da69bb576a0455f51c58a3afc554e1a8099c2711038eb387320699cfe1b` and the fiftieth was `dd0d42b535513d058a18bfbe9c005856dc0e398ee5653d747c1875f9c2f65629`.
 
-This is stronger experimental evidence for a local multi-million campaign, but one synthetic run on one environment does not qualify 5–10 million URLs as supported. It does not exercise DNS, TLS, redirects, robots, host scheduling, network retries, or renderer isolation. Promotion still requires repeated benchmarks on published supported-hardware profiles.
+This is stronger experimental evidence for a local multi-million campaign, but one synthetic run on one environment does not qualify 5–10 million URLs as supported. It does not exercise DNS, TLS, redirects, robots, host scheduling, network retries, or renderer isolation. Repeating larger campaigns is optional research rather than a v2.0 release gate.
 
-This report cannot support a 100M+ public claim. That claim remains gated on a separate live guarded-fetch campaign with the complete evidence in `SCALE_STRATEGY.md`.
+This report cannot support a 100M+ capacity claim. The product describes only a theoretical architectural potential beyond 100 million URLs and explicitly labels it untested and unsupported.

@@ -197,7 +197,7 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 			}
 			if err := e.commitRawBatch(runCtx, request, batch, maxLinks); err != nil {
 				if errors.Is(err, database.ErrURLLimitReached) {
-					_ = e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlRunning}, contracts.CrawlLimited, "url_limit")
+					return e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlRunning}, contracts.CrawlLimited, "url_limit")
 				}
 				return err
 			}
@@ -206,7 +206,7 @@ func (e *Engine) Run(ctx context.Context, request RunRequest) error {
 		for result := range results {
 			if err := e.commitResult(runCtx, request, result, maxLinks); err != nil {
 				if errors.Is(err, database.ErrURLLimitReached) {
-					_ = e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlRunning}, contracts.CrawlLimited, "url_limit")
+					return e.Frontier.SetStatus(runCtx, request.CrawlID, []contracts.CrawlStatus{contracts.CrawlRunning}, contracts.CrawlLimited, "url_limit")
 				}
 				return err
 			}

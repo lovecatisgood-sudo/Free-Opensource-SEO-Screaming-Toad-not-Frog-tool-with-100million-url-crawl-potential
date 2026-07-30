@@ -24,7 +24,7 @@ func TestProjectsProfilesAndScopePreviewRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if profile.Version != 1 || profile.Configuration.UserAgent == "" {
+	if profile.Version != 1 || profile.Configuration.UserAgent == "" || profile.Configuration.ResponseCompression != "gzip" {
 		t.Fatalf("profile=%+v", profile)
 	}
 	profiles, err := service.ListProfiles(ctx, project.ID, contracts.PageRequest{Limit: 10})
@@ -44,5 +44,28 @@ func TestProjectsProfilesAndScopePreviewRoundTrip(t *testing.T) {
 	projects, err := service.ListProjects(ctx, contracts.PageRequest{})
 	if err != nil || len(projects.Items) != 1 || !projects.Items[0].Archived {
 		t.Fatalf("projects=%+v err=%v", projects, err)
+	}
+}
+
+func TestProfileRejectsUnknownResponseCompression(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	service, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	project, err := service.CreateProject(ctx, "Compression validation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabled := contracts.CrawlConfiguration{SeedURL: "https://example.com/", ResponseCompression: "disabled", Limits: contracts.DefaultCrawlLimits()}
+	profile, err := service.CreateProfile(ctx, project.ID, "Disabled", disabled)
+	if err != nil || profile.Configuration.ResponseCompression != "disabled" {
+		t.Fatalf("profile=%+v err=%v", profile, err)
+	}
+	configuration := contracts.CrawlConfiguration{SeedURL: "https://example.com/", ResponseCompression: "automatic-bypass", Limits: contracts.DefaultCrawlLimits()}
+	if _, err := service.CreateProfile(ctx, project.ID, "Invalid", configuration); err == nil {
+		t.Fatal("expected invalid response compression to be rejected")
 	}
 }

@@ -13,7 +13,7 @@ Last reviewed: 2026-07-30. Owners are project roles until named maintainers are 
 | SEO findings are false positives/negatives | high | rules maintainer | versioned evidence, remediation limitations, exact/near duplicate separation, raw/rendered distinction | closed beta sampling still required before public stable release |
 | Dependency or build compromise | high | release maintainer | pinned Go/pnpm/toolchain inputs, CI, Dependabot, audits, CycloneDX SBOM, checksums, no auto-update | signing identity not configured; unsigned candidates cannot be called signed |
 | Reports or diagnostics leak sensitive crawl data | medium | privacy maintainer | managed paths, local auth, crawled-content exclusion in diagnostics, no raw-body storage | operators must review reports before sharing |
-| Capacity claim overstates verified behaviour | high | release maintainer | qualifying-field contract, campaign verifier, explicit synthetic/live transport labels, public-language gate | single-run 5M synthetic production-path evidence passed; supported 5–10M and verified 100M+ claims remain prohibited until their gates pass |
+| Capacity claim overstates verified behaviour | high | release maintainer | explicit synthetic/live labels and fixed theoretical-design language | single-run 5M synthetic evidence passed; 100M+ remains untested, unsupported and outside v2.0 release scope |
 | Cross-platform build is mistaken for runtime support | medium | release maintainer | CI matrix and explicit cross-build/runtime distinction | clean-machine Linux/macOS/Windows qualification remains a release gate |
 
 No risk is accepted permanently. A release approval record must link evidence for every high/critical row and date any exception.

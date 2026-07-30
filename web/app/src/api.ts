@@ -6,7 +6,7 @@ export interface IssueRecord { id: number; rule_id: string; rule_version: number
 export interface Page<T> { items: T[]; next_cursor?: string }
 export interface Project { project_id: string; name: string; archived: boolean; created_at: string; updated_at: string }
 export interface CrawlLimits { maximum_urls: number; maximum_depth: number; maximum_duration: number; maximum_body_bytes: number; maximum_disk_bytes: number; global_concurrency: number; per_host_concurrency: number; minimum_host_delay: number }
-export interface CrawlConfiguration { seed_url: string; allowed_hosts: string[]; allow_subdomains: boolean; include_path_regex?: string[]; exclude_path_regex?: string[]; include_query_regex?: string[]; exclude_query_regex?: string[]; user_agent?: string; rendering_mode: "raw" | "rendered"; limits: CrawlLimits }
+export interface CrawlConfiguration { seed_url: string; allowed_hosts: string[]; allow_subdomains: boolean; include_path_regex?: string[]; exclude_path_regex?: string[]; include_query_regex?: string[]; exclude_query_regex?: string[]; user_agent?: string; rendering_mode: "raw" | "rendered"; response_compression: "gzip" | "disabled"; limits: CrawlLimits }
 export interface Profile { profile_id: string; project_id: string; version: number; name: string; configuration: CrawlConfiguration; created_at: string }
 export interface ScopeDecision { url: string; normalized_url?: string; allowed: boolean; reason?: string }
 export interface Comparison { base_crawl_id: string; target_crawl_id: string; configuration_match: boolean; added_pages: number; removed_pages: number; changed_pages: number; new_issues: number; fixed_issues: number }

@@ -418,9 +418,9 @@ The first code slice after approval should be deliberately small:
 
 This slice validates the most consequential security boundary before database, UI or audit-rule volume makes it expensive to change.
 
-## 12. Post-version-1 scale program
+## 12. Optional post-version-1 scale research
 
-The 100M+ goal is delivered after version 1 through measured stages. Work advances only when the preceding stage preserves audit correctness, recovery, safety, and usable queries.
+The following stages document how the architecture could theoretically extend beyond current tested volumes. They are not v2.0 release gates, scheduled commitments or supported-capacity promises. Further work requires a separately approved scope.
 
 ### Scale Stage A — Segment-ready local engine
 
@@ -452,7 +452,7 @@ Included in version-1 architecture:
 - Evaluate PostgreSQL or a purpose-built operational frontier and ClickHouse-class analytical storage.
 - Prove worker loss, coordinator failover, replay and deduplication semantics.
 
-### Scale Stage D — 100M qualifying benchmark
+### Scale Stage D — Optional 100M research protocol
 
 - Complete more than 100 million unique guarded fetches in one campaign.
 - Retain the required audit field set and global link relationships.
@@ -462,7 +462,7 @@ Included in version-1 architecture:
 - Publish the benchmark generator, expected invariants and verification tools.
 - Repeat the benchmark on the release candidate advertised as supporting 100M+.
 
-The product may describe itself as designed for 100M campaigns before Stage D. It may claim verified 100M+ crawling only after Stage D passes and the evidence is published.
+Stage D is deferred indefinitely and is not required for v2.0. Approved public language is limited to: “Architecturally designed for segmented campaigns beyond 100 million URLs; this is a theoretical scalability target, not a tested, supported or guaranteed capacity.”
 
 ## 13. Requirement-to-milestone traceability
 
@@ -488,7 +488,7 @@ The product may describe itself as designed for 100M campaigns before Stage D. I
 | INT-03–INT-07 | Milestone 6 | Milestone 8 MCP conformance and adversarial tests |
 | INT-08 | Milestone 4 | Generated OpenAPI freshness check |
 | Security/privacy requirements | Milestones 0, 1, 4, 7 and 8 | Security checklist plus no high/critical release finding |
-| 100M+ north-star goal | Post-version-one Scale Stages A–D | Public qualifying benchmark in Scale Stage D |
+| Theoretical 100M+ architecture direction | Optional post-version-one research | Not a release gate or supported-capacity claim |
 
 ## 14. Milestone approval records
 

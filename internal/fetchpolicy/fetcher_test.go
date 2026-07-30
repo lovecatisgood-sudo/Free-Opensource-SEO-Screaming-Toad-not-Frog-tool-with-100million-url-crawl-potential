@@ -66,6 +66,40 @@ func TestFetcherFollowsRevalidatedRelativeRedirect(t *testing.T) {
 	}
 }
 
+func TestFetcherCanOmitCompressionNegotiation(t *testing.T) {
+	t.Parallel()
+
+	limits := DefaultFetchLimits()
+	limits.OmitAcceptEncoding = true
+	fetcher, base := fixtureFetcher(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if value := r.Header.Get("Accept-Encoding"); value != "" {
+			t.Errorf("Accept-Encoding=%q, want omitted", value)
+		}
+		_, _ = w.Write([]byte("identity response"))
+	}), limits)
+	result, err := fetcher.Fetch(context.Background(), base)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if string(result.Body) != "identity response" {
+		t.Fatalf("body=%q", result.Body)
+	}
+}
+
+func TestFetcherRequestsGzipByDefault(t *testing.T) {
+	t.Parallel()
+
+	fetcher, base := fixtureFetcher(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if value := r.Header.Get("Accept-Encoding"); value != "gzip" {
+			t.Errorf("Accept-Encoding=%q, want gzip", value)
+		}
+		_, _ = w.Write([]byte("ok"))
+	}), DefaultFetchLimits())
+	if _, err := fetcher.Fetch(context.Background(), base); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+}
+
 func TestFetcherBlocksRedirectToPrivateTarget(t *testing.T) {
 	t.Parallel()
 
