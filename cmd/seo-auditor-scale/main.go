@@ -117,6 +117,7 @@ func main() {
 func status(arguments []string) {
 	flags := flag.NewFlagSet("status", flag.ExitOnError)
 	databasePath := flags.String("database", ".data/scale.sqlite3", "benchmark database path")
+	brief := flags.Bool("brief", false, "print progress and aggregate segment status")
 	_ = flags.Parse(arguments)
 	ctx := context.Background()
 	db, err := database.OpenReadOnly(ctx, *databasePath)
@@ -137,6 +138,16 @@ func status(arguments []string) {
 	storage, err := frontier.StorageBytes()
 	if err != nil {
 		fail(err)
+	}
+	if *brief {
+		completed := 0
+		for _, segment := range segments {
+			if segment.Status == "completed" {
+				completed++
+			}
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"progress": progress, "completed_segments": completed, "storage_bytes": storage})
+		return
 	}
 	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"progress": progress, "segments": segments, "storage_bytes": storage})
 }
