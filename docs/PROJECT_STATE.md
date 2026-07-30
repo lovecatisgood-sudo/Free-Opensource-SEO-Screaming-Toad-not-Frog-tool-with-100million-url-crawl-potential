@@ -2,7 +2,7 @@
 
 Checkpoint date: 2026-07-30 (Asia/Ho_Chi_Minh)  
 Branch: `main`  
-Previous checkpoint commit: `f96d557`
+Previous checkpoint commit: `d8410be`
 
 ## Current outcome
 
@@ -22,6 +22,10 @@ The stdio MCP server is agent-operable from a fresh workspace. Beyond the origin
 
 The public repository README now includes eight dashboard screenshots captured from a real local DJAI Academy verification crawl, an expert-oriented product tour, DJAI Academy trainer/community co-creation credit, service links and the Siamese Cat Cafe link. During capture, a raw-only summary compatibility bug was found and fixed: the dashboard now safely handles an absent rendering-status distribution.
 
+The dashboard footer now carries the approved attribution: **Siamese Cat Dev from DJAI Academy & With DJAI Community**. Siamese Cat Dev links to `https://github.com/lovecatisgood-sudo`, DJAI Academy to `https://djai.academy`, and DJAI Community to `https://school.djai.academy`. A separate **Support this project on GitHub ★** call-to-action links to the public SEO Screaming Toad repository. The generated embedded web assets include this footer.
+
+The public repository's `main` branch is protected. Pull requests must be current, all five existing CI checks must pass, and conversations must be resolved; the rules apply to administrators and prohibit force pushes and deletion. Required external approval remains zero so the solo maintainer can merge after the automated gates pass.
+
 ## Verification evidence
 
 - Full Go test suite and `go vet` passed.
@@ -36,6 +40,7 @@ The public repository README now includes eight dashboard screenshots captured f
 - After the quality-first scope change, focused extractor/rules/database/renderer tests, the full Go suite, the network-disabled full Go suite, TypeScript tests and TypeScript production builds passed in the development container.
 - The offline gate exposed and fixed a pre-existing real-DNS dependency in the list-mode test. Application services now have a test-only resolver seam while production continues to default to the guarded system resolver.
 - The branded React workbench passed application type-checking, frontend tests, production compilation, the full embedded-UI Go suite, and visual inspection at 1600×1000 and 430×900 viewports.
+- The updated attribution/footer passed all three frontend tests, TypeScript type checking, production compilation and an embedded-bundle content check. Go was not installed in the current shell, so no new Go test run was performed for this footer-only checkpoint.
 
 ## Scale state
 
