@@ -2,7 +2,7 @@
 
 SEO Auditor is a local-first, open-source technical SEO crawler focused on safe network behaviour, durable recovery and evidence-backed audits. The crawler core is Go; the browser interface and isolated optional renderer use TypeScript.
 
-The v2.0 implementation is being release-qualified. Raw crawling, rendered-page evidence, local UI/API/CLI/MCP workflows, recovery, reports, lifecycle diagnostics, and the 100,000-URL single-crawl gate are implemented. A 100M+ campaign claim remains explicitly unverified until the separate distributed-scale evidence gate passes.
+The v2.0 implementation is being release-qualified. Raw crawling, rendered-page evidence, local UI/API/CLI/MCP workflows, recovery, reports, lifecycle diagnostics, and the 100,000-URL single-crawl gate are implemented. The production persistence and analysis path has also completed a recoverable 1,000,000-URL synthetic campaign; this is experimental scale evidence, not live-network evidence. A 100M+ campaign claim remains explicitly unverified until the separate distributed-scale evidence gate passes. See the [campaign benchmark](./docs/benchmarks/2026-07-30-segmented-campaign.md).
 
 ## Development
 
