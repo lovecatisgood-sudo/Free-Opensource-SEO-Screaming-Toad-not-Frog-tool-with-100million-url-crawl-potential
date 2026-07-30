@@ -6,7 +6,7 @@ Previous checkpoint commit: `f96d557`
 
 ## Current outcome
 
-SEO Auditor's locally executable v2.0 implementation is complete as release candidate `2.0.0-rc.3`. The repository contains the approved PRD, architecture and implementation plan plus the implemented Go crawler, SQLite persistence, raw and isolated rendered audits, web UI, local API, CLI, MCP server, reports, recovery, scale prototypes and release tooling.
+SEO Auditor's locally executable v2.0 implementation is complete as release candidate `2.0.0-rc.4`. The repository contains the approved PRD, architecture and implementation plan plus the implemented Go crawler, SQLite persistence, raw and isolated rendered audits, web UI, local API, CLI, MCP server, reports, recovery, scale prototypes and release tooling.
 
 Do not describe the product as a stable v2.0 release yet. External release qualification remains blocked on additional closed-beta SEO sampling, clean-machine macOS and Windows runtime tests, and a release-signing identity.
 
@@ -17,10 +17,10 @@ Repeated 5–10-million campaigns and live 100M qualification were removed from 
 - Full Go test suite and `go vet` passed.
 - TypeScript tests, type checking and production builds passed.
 - Opt-in real Chromium mediation, hung-page and crash-boundary tests passed.
-- RC3 was cross-built for Linux amd64/arm64, macOS amd64/arm64 and Windows amd64.
-- RC3 includes a CycloneDX SBOM and verified `SHA256SUMS`.
-- RC3 is unsigned.
-- Release artifacts are local at `.artifacts/release/2.0.0-rc.3/`.
+- RC4 was built from `5213ad6990574abc65092bed9bc8dbaa80847eee` for Linux amd64/arm64, macOS amd64/arm64 and Windows amd64.
+- RC4 includes a CycloneDX SBOM and verified `SHA256SUMS`.
+- RC4 is unsigned.
+- Release artifacts are local at `.artifacts/release/2.0.0-rc.4/`.
 - The Git worktree was clean before this checkpoint was added.
 
 ## Scale state
@@ -71,7 +71,7 @@ Hostinger returned HTTP 403 whenever the client explicitly sent an `Accept-Encod
 1. Read `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_PLAN.md`, this checkpoint and the segmented campaign report.
 2. Confirm `git status --short --branch` is clean and start the capability-free development container.
 3. Obtain more authorized beta targets and retain comparison evidence.
-4. Obtain clean macOS/Windows environments and a signing identity before stable promotion.
+4. Obtain clean macOS/Windows environments and a signing identity before promoting RC4 to stable.
 5. Treat any additional multi-million or distributed campaigns as separately approved optional research.
 
 The ignored `open-seo-crawler/` reference remains untrusted and must not be installed, executed or copied. SEonaut was used only as design inspiration; project source remains original.
