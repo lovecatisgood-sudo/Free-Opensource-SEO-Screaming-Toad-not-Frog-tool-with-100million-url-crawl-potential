@@ -82,7 +82,7 @@ func writeIssuesSheet(ctx context.Context, source QuerySource, crawlID contracts
 		return err
 	}
 	row := 1
-	if err := writeXMLRow(output, row, []string{"ID", "Rule ID", "Rule Version", "Subject Type", "Subject ID", "Severity", "Evidence", "Created At"}); err != nil {
+	if err := writeXMLRow(output, row, []string{"ID", "Rule ID", "Rule Version", "Subject Type", "Subject ID", "Severity", "Classification", "Evidence Source", "Evidence", "Created At"}); err != nil {
 		return err
 	}
 	row++
@@ -96,7 +96,7 @@ func writeIssuesSheet(ctx context.Context, source QuerySource, crawlID contracts
 			if row > maximumXLSXDataRows+1 {
 				return fmt.Errorf("XLSX row limit exceeded")
 			}
-			values := []string{strconv.FormatInt(item.ID, 10), item.RuleID, strconv.Itoa(item.RuleVersion), item.SubjectType, item.SubjectID, item.Severity, item.EvidenceJSON, item.CreatedAt}
+			values := []string{strconv.FormatInt(item.ID, 10), item.RuleID, strconv.Itoa(item.RuleVersion), item.SubjectType, item.SubjectID, item.Severity, item.Classification, item.EvidenceSource, item.EvidenceJSON, item.CreatedAt}
 			if err := writeXMLRow(output, row, values); err != nil {
 				return err
 			}

@@ -157,3 +157,13 @@ func TestFetcherEnforcesDeadline(t *testing.T) {
 		t.Fatal("expected deadline error")
 	}
 }
+
+func TestRequestCredentialsAreHostBound(t *testing.T) {
+	credentials := RequestCredentials{Header: "Authorization", Value: "Bearer secret", AllowedHosts: []string{"example.com"}, AllowSubdomains: true}
+	if !credentials.allows("example.com") || !credentials.allows("www.example.com") {
+		t.Fatal("credentials should apply to the configured host boundary")
+	}
+	if credentials.allows("example.com.evil.test") || credentials.allows("evil.test") {
+		t.Fatal("credentials escaped the configured host boundary")
+	}
+}

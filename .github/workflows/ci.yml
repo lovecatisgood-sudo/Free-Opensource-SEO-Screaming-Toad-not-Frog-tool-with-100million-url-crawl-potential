@@ -9,6 +9,13 @@ permissions:
   contents: read
 
 jobs:
+  path-portability:
+    name: Repository paths
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: scripts/check-portable-paths.sh
+
   go:
     name: Go (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -24,6 +31,8 @@ jobs:
           cache: true
       - name: Test
         run: go test ./...
+      - name: Core SEO conformance
+        run: go run ./cmd/seo-auditor-conformance -format json
       - name: Vet
         run: go vet ./...
 

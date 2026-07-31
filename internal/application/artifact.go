@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
@@ -121,6 +122,22 @@ func (s *Service) cleanupArtifacts(ctx context.Context) error {
 	for _, name := range paths {
 		if filepath.Base(name) == name {
 			_ = os.Remove(filepath.Join(s.artifactDir, name))
+		}
+	}
+	owned, err := s.frontier.ArtifactRelativePaths(ctx)
+	if err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(s.artifactDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.Type().IsRegular() && strings.HasPrefix(name, "artifact_") {
+			if _, exists := owned[name]; !exists {
+				_ = os.Remove(filepath.Join(s.artifactDir, name))
+			}
 		}
 	}
 	return nil

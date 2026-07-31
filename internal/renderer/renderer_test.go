@@ -103,6 +103,7 @@ func TestPlaywrightWorkerRendersOnlyMediatedResources(t *testing.T) {
 	}).Render(context.Background(), Request{
 		RequestID: "browser-fixture", URL: "https://fixture.test/",
 		Deadline: 15 * time.Second, MaximumRequests: 20, MaximumBytes: 1 << 20,
+		CaptureScreenshot: true, RunAccessibility: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -112,6 +113,9 @@ func TestPlaywrightWorkerRendersOnlyMediatedResources(t *testing.T) {
 	}
 	if len(fetcher.seen) < 3 || fetcher.seen[0] != "https://fixture.test/" || !containsString(fetcher.seen, "https://fixture.test/app.js") || !containsString(fetcher.seen, "http://127.0.0.1/private") {
 		t.Fatalf("browser resources bypassed or diverged from mediation: %#v", fetcher.seen)
+	}
+	if len(result.Screenshot) == 0 || len(result.Accessibility) == 0 || len(result.ResourceFailures) == 0 || result.EngineVersion == "" {
+		t.Fatalf("rendered diagnostics missing: screenshot=%d accessibility=%d resources=%d engine=%q", len(result.Screenshot), len(result.Accessibility), len(result.ResourceFailures), result.EngineVersion)
 	}
 	second, err := (&Supervisor{NodeBinary: "node", ScriptPath: script, ContainerSandbox: true, BrowserPath: os.Getenv("PLAYWRIGHT_BROWSERS_PATH"), Fetcher: &browserFixtureFetcher{}}).Render(context.Background(), Request{RequestID: "browser-fixture-second", URL: "https://fixture.test/", Deadline: 15 * time.Second, MaximumRequests: 20, MaximumBytes: 1 << 20})
 	if err != nil || second.Status != "completed" || strings.Contains(second.HTML, "Persisted state") {

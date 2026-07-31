@@ -29,7 +29,7 @@ If you are searching for an **open-source Screaming Frog alternative**, a self-h
 | Capability | What you get |
 |---|---|
 | Open source | MIT-licensed Go crawler, React dashboard, CLI, local API, and MCP server |
-| AI-agent operation | 23 bounded MCP tools for projects, crawls, evidence, comparisons, and reports |
+| AI-agent operation | 36 bounded MCP tools for projects, crawls, integrations, scheduling, architecture, evidence, comparisons, and reports |
 | Evidence-backed audits | Versioned findings retain rule ID, severity, subject, evidence, and limitations |
 | Raw + rendered analysis | Raw HTML stays distinct from optional JavaScript-rendered evidence |
 | Local-first data | SQLite/WAL storage and managed exports remain on your machine |
@@ -87,7 +87,7 @@ The dense desktop-style workbench keeps projects, bounded crawl profiles, audit 
 SEO Screaming Toad is not merely a free crawler with a different mascot. It is built around workflows that matter when an audit must be repeatable, explainable, automatable, and safe:
 
 - **Use the whole product without a paid crawler license.** The crawler, dashboard, CLI, local API, MCP server, reports, and source code are MIT licensed.
-- **Give an AI agent purpose-built SEO tools—not a shell.** The 23-tool MCP interface covers bounded crawl setup, lifecycle control, pages, links, issues, explanations, comparisons, and managed exports.
+- **Give an AI agent purpose-built SEO tools—not a shell.** The 36-tool MCP interface covers bounded crawl setup, lifecycle control, custom audits, architecture, scheduled audits, external evidence, pages, links, explanations, comparisons, and managed exports.
 - **Audit the evidence behind the recommendation.** Findings retain versioned rule identities, structured evidence, remediation, and limitations instead of presenting an unexplained score.
 - **Keep raw and JavaScript-rendered SEO evidence distinct.** Diagnose client-side changes without silently replacing what the server originally returned.
 - **Own the crawl data and automation path.** SQLite/WAL state remains local and can be operated through the UI, JSON CLI, authenticated loopback API, or MCP.
@@ -156,10 +156,12 @@ The versioned audit engine currently covers:
 - exact and near-duplicate content signals;
 - hreflang validity, targets, and reciprocity;
 - image alt attributes and failing image resources;
+- image dimensions, oversized/legacy image responses, responsive viewport, AMP/mobile alternates, and bounded PDF readiness;
 - crawl depth, orphan-like pages, internal links, and nofollow observations;
 - mixed content and selected defensive headers;
 - JSON-LD structured-data syntax and basic shape validation;
 - raw-versus-rendered SEO differences for JavaScript sites.
+- pinned axe accessibility diagnostics, retained rendered DOM/screenshots, console/resource failures, PageSpeed/CrUX, Search Console and GA4 observations.
 
 Every check documents its limitations. Findings are technical observations—not promises about indexing, rankings, traffic, or rich-result eligibility. See the [audit rule catalog](docs/RULE_CATALOG.md).
 

@@ -47,8 +47,15 @@ func TestOpenMigratesAndEnablesWAL(t *testing.T) {
 	if err := db.SQL().QueryRow("SELECT count(*) FROM schema_migration").Scan(&count); err != nil {
 		t.Fatalf("migration count: %v", err)
 	}
-	if count != 8 {
-		t.Fatalf("migration count = %d, want 8", count)
+	if count != 13 {
+		t.Fatalf("migration count = %d, want 13", count)
+	}
+	var classification, source string
+	if err := db.SQL().QueryRow("SELECT (SELECT dflt_value FROM pragma_table_info('issue') WHERE name='classification'), (SELECT dflt_value FROM pragma_table_info('issue') WHERE name='evidence_source')").Scan(&classification, &source); err != nil {
+		t.Fatalf("issue provenance migration: %v", err)
+	}
+	if classification != "'review'" || source != "'raw'" {
+		t.Fatalf("issue provenance defaults classification=%q source=%q", classification, source)
 	}
 }
 

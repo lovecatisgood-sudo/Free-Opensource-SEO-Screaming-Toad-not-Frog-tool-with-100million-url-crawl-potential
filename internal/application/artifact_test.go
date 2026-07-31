@@ -62,3 +62,30 @@ func TestManagedExportAndBackupStayInsideArtifactDirectory(t *testing.T) {
 		t.Fatalf("diagnostic content was incomplete or leaked a URL: %s", body)
 	}
 }
+
+func TestArtifactCleanupRemovesOnlyExpiredAndOrphanedManagedFiles(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	service, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	orphan := filepath.Join(service.artifactDir, "artifact_00000000000000000000000000000000.csv")
+	unmanaged := filepath.Join(service.artifactDir, "operator-note.txt")
+	if err := os.WriteFile(orphan, []byte("orphan"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unmanaged, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.cleanupArtifacts(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatalf("orphaned managed artifact remains: %v", err)
+	}
+	if _, err := os.Stat(unmanaged); err != nil {
+		t.Fatalf("unmanaged file was removed: %v", err)
+	}
+}

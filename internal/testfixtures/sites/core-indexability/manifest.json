@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "id": "core-indexability.v1",
+  "description": "Raw HTTP, extraction, canonical and indexability conformance fixtures.",
+  "cases": [
+    {
+      "id": "healthy.indexable",
+      "path": "/healthy",
+      "status_code": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": "default-src 'self'"
+      },
+      "body": "<!doctype html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete and useful healthy fixture title</title><meta name=\"description\" content=\"This is a complete fixture description with enough useful detail to stay inside the configured editorial thresholds for this test page.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/healthy\"></head><body><main><h1>A distinct healthy fixture heading</h1><p>Useful primary fixture content for deterministic extraction.</p></main></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [],
+      "expected_absent": [
+        {"rule_id": "AUD-01"},
+        {"rule_id": "AUD-04"},
+        {"rule_id": "AUD-05"}
+      ]
+    },
+    {
+      "id": "indexability.noindex",
+      "path": "/noindex",
+      "status_code": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": "default-src 'self'"
+      },
+      "body": "<!doctype html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete noindex fixture page title here</title><meta name=\"description\" content=\"This noindex fixture has complete metadata so the conformance case isolates the intended indexability observation only.\"><meta name=\"robots\" content=\"noindex, follow\"><link rel=\"canonical\" href=\"{{BASE_URL}}/noindex\"></head><body><main><h1>A distinct noindex fixture heading</h1><p>This page deliberately supplies a noindex directive.</p></main></body></html>",
+      "in_sitemap": false,
+      "expected_findings": [
+        {
+          "rule_id": "AUD-05",
+          "message": "Page is not indexable",
+          "severity": "error",
+          "classification": "deterministic",
+          "evidence": {"status_code": 200, "noindex": true}
+        }
+      ],
+      "expected_absent": [
+        {"rule_id": "AUD-01"},
+        {"rule_id": "AUD-04"}
+      ]
+    },
+    {
+      "id": "canonical.conflicting",
+      "path": "/conflicting-canonicals",
+      "status_code": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": "default-src 'self'"
+      },
+      "body": "<!doctype html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A conflicting canonical fixture page title</title><meta name=\"description\" content=\"This fixture uses two conflicting canonical links while keeping all unrelated metadata intentionally healthy.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/canonical-a\"><link rel=\"canonical\" href=\"{{BASE_URL}}/canonical-b\"></head><body><main><h1>A distinct conflicting canonical heading</h1><p>Two canonical declarations are present.</p></main></body></html>",
+      "in_sitemap": true,
+      "expected_findings": [
+        {
+          "rule_id": "AUD-04",
+          "message": "Page has conflicting canonical elements",
+          "severity": "error",
+          "classification": "deterministic"
+        }
+      ],
+      "expected_absent": [
+        {"rule_id": "AUD-01"},
+        {"rule_id": "AUD-05"}
+      ]
+    },
+    {
+      "id": "response.not-found",
+      "path": "/not-found",
+      "status_code": 404,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": "default-src 'self'"
+      },
+      "body": "<!doctype html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>A complete missing resource fixture title</title><meta name=\"description\" content=\"This missing resource fixture keeps its HTML complete so only response and indexability failures are expected.\"><link rel=\"canonical\" href=\"{{BASE_URL}}/not-found\"></head><body><main><h1>A distinct missing resource heading</h1><p>The fixture intentionally returns HTTP 404.</p></main></body></html>",
+      "in_sitemap": false,
+      "expected_findings": [
+        {
+          "rule_id": "AUD-01",
+          "message": "Page response is not successful",
+          "severity": "error",
+          "classification": "deterministic",
+          "evidence": {"status_code": 404}
+        },
+        {
+          "rule_id": "AUD-05",
+          "message": "Page is not indexable",
+          "severity": "error",
+          "classification": "deterministic",
+          "evidence": {"status_code": 404, "noindex": false}
+        }
+      ],
+      "expected_absent": [
+        {"rule_id": "AUD-04"}
+      ]
+    }
+  ]
+}

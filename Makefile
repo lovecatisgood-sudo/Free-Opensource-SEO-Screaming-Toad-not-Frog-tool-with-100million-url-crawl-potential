@@ -7,7 +7,7 @@ export GOCACHE := $(CURDIR)/.cache/go-build
 export GOMODCACHE := $(CURDIR)/.cache/go-mod
 export GOPATH := $(CURDIR)/.cache/go-path
 
-.PHONY: bootstrap build test test-offline lint fmt release clean sandbox sandbox-down sandbox-shell
+.PHONY: bootstrap build test test-offline conformance lint fmt release clean sandbox sandbox-down sandbox-shell
 
 bootstrap:
 	@mkdir -p .data .cache .artifacts .coverage bin
@@ -20,6 +20,9 @@ test: bootstrap
 
 test-offline:
 	docker compose --profile offline run --rm offline-test
+
+conformance: bootstrap
+	$(GO) run ./cmd/seo-auditor-conformance -format markdown
 
 lint:
 	$(GO) vet ./...

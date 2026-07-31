@@ -26,14 +26,16 @@ type AuditSummary struct {
 }
 
 type IssueRecord struct {
-	ID           int64  `json:"id"`
-	RuleID       string `json:"rule_id"`
-	RuleVersion  int    `json:"rule_version"`
-	SubjectType  string `json:"subject_type"`
-	SubjectID    string `json:"subject_id"`
-	Severity     string `json:"severity"`
-	EvidenceJSON string `json:"evidence_json"`
-	CreatedAt    string `json:"created_at"`
+	ID             int64  `json:"id"`
+	RuleID         string `json:"rule_id"`
+	RuleVersion    int    `json:"rule_version"`
+	SubjectType    string `json:"subject_type"`
+	SubjectID      string `json:"subject_id"`
+	Severity       string `json:"severity"`
+	Classification string `json:"classification"`
+	EvidenceSource string `json:"evidence_source"`
+	EvidenceJSON   string `json:"evidence_json"`
+	CreatedAt      string `json:"created_at"`
 }
 type PageRecord struct {
 	ID                      int64  `json:"id"`
@@ -117,16 +119,16 @@ func (f *Frontier) ListIssues(ctx context.Context, crawlID contracts.ID, page co
 	}
 	search := likeSearch(page.Search)
 	return listKeyset(ctx, page, func(after int64, limit int) (*sql.Rows, error) {
-		return f.db.QueryContext(ctx, `SELECT id, rule_id, rule_version, subject_type, subject_id, severity, evidence_json, created_at FROM issue WHERE crawl_id = ? AND id > ? AND (?='' OR severity=?) AND (?='' OR rule_id=?) AND (?='' OR evidence_json LIKE ? ESCAPE '\') ORDER BY id LIMIT ?`, crawlID, after, page.Severity, page.Severity, page.RuleID, page.RuleID, page.Search, search, limit)
+		return f.db.QueryContext(ctx, `SELECT id, rule_id, rule_version, subject_type, subject_id, severity, classification, evidence_source, evidence_json, created_at FROM issue WHERE crawl_id = ? AND id > ? AND (?='' OR severity=?) AND (?='' OR rule_id=?) AND (?='' OR evidence_json LIKE ? ESCAPE '\') ORDER BY id LIMIT ?`, crawlID, after, page.Severity, page.Severity, page.RuleID, page.RuleID, page.Search, search, limit)
 	}, func(rows *sql.Rows) (IssueRecord, error) {
 		var item IssueRecord
-		err := rows.Scan(&item.ID, &item.RuleID, &item.RuleVersion, &item.SubjectType, &item.SubjectID, &item.Severity, &item.EvidenceJSON, &item.CreatedAt)
+		err := rows.Scan(&item.ID, &item.RuleID, &item.RuleVersion, &item.SubjectType, &item.SubjectID, &item.Severity, &item.Classification, &item.EvidenceSource, &item.EvidenceJSON, &item.CreatedAt)
 		return item, err
 	}, func(item IssueRecord) int64 { return item.ID })
 }
 func (f *Frontier) GetIssue(ctx context.Context, crawlID contracts.ID, id int64) (IssueRecord, error) {
 	var item IssueRecord
-	err := f.db.QueryRowContext(ctx, `SELECT id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at FROM issue WHERE crawl_id=? AND id=?`, crawlID, id).Scan(&item.ID, &item.RuleID, &item.RuleVersion, &item.SubjectType, &item.SubjectID, &item.Severity, &item.EvidenceJSON, &item.CreatedAt)
+	err := f.db.QueryRowContext(ctx, `SELECT id,rule_id,rule_version,subject_type,subject_id,severity,classification,evidence_source,evidence_json,created_at FROM issue WHERE crawl_id=? AND id=?`, crawlID, id).Scan(&item.ID, &item.RuleID, &item.RuleVersion, &item.SubjectType, &item.SubjectID, &item.Severity, &item.Classification, &item.EvidenceSource, &item.EvidenceJSON, &item.CreatedAt)
 	return item, err
 }
 

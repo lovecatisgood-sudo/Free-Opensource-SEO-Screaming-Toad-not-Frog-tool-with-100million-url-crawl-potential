@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/seo-auditor/seo-auditor/internal/application"
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
 	"github.com/seo-auditor/seo-auditor/internal/database"
+	"github.com/seo-auditor/seo-auditor/internal/integrations"
 )
 
 func TestOpenAPIDocumentCoversPublicRoutes(t *testing.T) {
@@ -29,13 +31,62 @@ func TestOpenAPIDocumentCoversPublicRoutes(t *testing.T) {
 	if err := json.Unmarshal(result.Body.Bytes(), &document); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/openapi.json", "/projects/{projectId}/restore", "/crawls/{crawlId}/timeline", "/crawls/{crawlId}/issues/{issueId}", "/crawls/{crawlId}/diagnostics"} {
+	for _, path := range []string{"/openapi.json", "/secrets", "/projects/{projectId}/restore", "/projects/{projectId}/integrations/{provider}", "/crawls/{crawlId}/timeline", "/crawls/{crawlId}/issues/{issueId}", "/crawls/{crawlId}/diagnostics"} {
 		if _, exists := document.Paths[path]; !exists {
 			t.Errorf("OpenAPI path missing: %s", path)
 		}
 	}
 	if document.OpenAPI != "3.1.0" {
 		t.Fatalf("OpenAPI version=%q", document.OpenAPI)
+	}
+}
+
+type fakeIntegrationBackend struct {
+	*fakeBackend
+	storedReference string
+	storedValue     []byte
+}
+
+func (b *fakeIntegrationBackend) PutSecret(_ context.Context, reference string, value []byte) (application.SecretStatus, error) {
+	b.storedReference = reference
+	b.storedValue = append([]byte(nil), value...)
+	return application.SecretStatus{Reference: reference, Available: true}, nil
+}
+func (*fakeIntegrationBackend) DeleteSecret(context.Context, string) error { return nil }
+func (*fakeIntegrationBackend) SecretStoreStatus(context.Context) (application.SecretStatus, error) {
+	return application.SecretStatus{Available: true}, nil
+}
+func (*fakeIntegrationBackend) RunPageSpeed(context.Context, application.IntegrationContext, string, string) (database.IntegrationObservationRecord, error) {
+	return database.IntegrationObservationRecord{Provider: "pagespeed-insights"}, nil
+}
+func (*fakeIntegrationBackend) RunCrUX(context.Context, application.IntegrationContext, integrations.CrUXRequest) (database.IntegrationObservationRecord, error) {
+	return database.IntegrationObservationRecord{}, nil
+}
+func (*fakeIntegrationBackend) RunSearchConsole(context.Context, application.IntegrationContext, integrations.SearchConsoleRequest) (database.IntegrationObservationRecord, error) {
+	return database.IntegrationObservationRecord{}, nil
+}
+func (*fakeIntegrationBackend) RunGA4(context.Context, application.IntegrationContext, integrations.GA4Request) (database.IntegrationObservationRecord, error) {
+	return database.IntegrationObservationRecord{}, nil
+}
+func (*fakeIntegrationBackend) ListIntegrationObservations(context.Context, contracts.ID, string, contracts.PageRequest) (contracts.Page[database.IntegrationObservationRecord], error) {
+	return contracts.Page[database.IntegrationObservationRecord]{Items: []database.IntegrationObservationRecord{}}, nil
+}
+
+func TestCredentialRouteNeverEchoesSecret(t *testing.T) {
+	t.Parallel()
+	backend := &fakeIntegrationBackend{fakeBackend: &fakeBackend{}}
+	handler, _ := New(backend, "http://127.0.0.1:7331")
+	request := httptest.NewRequest(http.MethodPut, "http://127.0.0.1:7331/api/v1/secrets", strings.NewReader(`{"reference":"secret_psi","value":"do-not-echo"}`))
+	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: handler.sessionToken})
+	request.Header.Set("Origin", "http://127.0.0.1:7331")
+	request.Header.Set("X-CSRF-Token", handler.csrfToken)
+	result := httptest.NewRecorder()
+	handler.ServeHTTP(result, request)
+	if result.Code != http.StatusOK || string(backend.storedValue) != "do-not-echo" {
+		t.Fatalf("status=%d body=%s", result.Code, result.Body.String())
+	}
+	if strings.Contains(result.Body.String(), "do-not-echo") {
+		t.Fatal("credential value was reflected in the API response")
 	}
 }
 

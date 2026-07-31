@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { chromium, type Browser, type BrowserContext, type Route } from "playwright";
+import axe from "axe-core";
 import {
   FrameDecoder,
   encodeFrame,
   maximumRenderedHTMLBytes,
+  maximumScreenshotBytes,
   maximumResourceBytes,
   validateRenderRequest,
   type FetchResourceResponse,
@@ -88,6 +90,8 @@ async function render(request: RenderRequest): Promise<RenderResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), request.deadlineMs);
   let context: BrowserContext | null = null;
+  const consoleMessages: Array<{level:string;message:string}> = [];
+  const resourceFailures: Array<{resourceType:string;url:string;errorCode:string}> = [];
   try {
     const activeBrowser = await getBrowser();
     context = await activeBrowser.newContext({
@@ -131,16 +135,31 @@ async function render(request: RenderRequest): Promise<RenderResponse> {
       }
     });
     const page = await context.newPage();
+    page.on("console", (message) => { if (consoleMessages.length < 100) consoleMessages.push({level:message.type(),message:redact(message.text()).slice(0,2_000)}); });
+    page.on("requestfailed", (failed) => { if (resourceFailures.length < 100) resourceFailures.push({resourceType:failed.resourceType(),url:redactURL(failed.url()).slice(0,2_000),errorCode:(failed.failure()?.errorText ?? "request_failed").slice(0,200)}); });
     page.on("dialog", (dialog) => dialog.dismiss().catch(() => undefined));
     page.on("download", (download) => download.cancel().catch(() => undefined));
     await page.goto(request.url, { waitUntil: "domcontentloaded", timeout: request.deadlineMs });
     await page.waitForLoadState("networkidle", { timeout: Math.min(2_000, request.deadlineMs) }).catch(() => undefined);
     const html = await page.content();
     if (Buffer.byteLength(html, "utf8") > maximumRenderedHTMLBytes) throw new Error("rendered_html_limit");
+    let accessibility: RenderResponse["accessibility"] = [];
+    if (request.runAccessibility) {
+      await page.addScriptTag({content: axe.source});
+      const audit = await page.evaluate(async () => { const scope=globalThis as unknown as {document:unknown;axe:{run:(root:unknown,options:unknown)=>Promise<{violations:Array<{id:string;impact:string|null;tags:string[];help:string;nodes:Array<{target:string[];html:string}>}>}>}}; return scope.axe.run(scope.document,{resultTypes:["violations"]}); });
+      accessibility = audit.violations.flatMap((violation) => violation.nodes.map((node) => ({ruleId:violation.id,impact:violation.impact ?? "unknown",tags:violation.tags.slice(0,20),target:node.target.join(" ").slice(0,1_000),html:redact(node.html).slice(0,2_000),help:violation.help.slice(0,500)}))).slice(0,100);
+    }
+    let screenshotBase64: string | undefined;
+    let screenshotTruncated = false;
+    if (request.captureScreenshot) {
+      const screenshot = await page.screenshot({type:"jpeg",quality:70,fullPage:false,animations:"disabled"});
+      if (screenshot.byteLength <= maximumScreenshotBytes) screenshotBase64 = screenshot.toString("base64"); else screenshotTruncated = true;
+    }
     pagesSinceRecycle++;
     return {
       kind: "render_result", protocolVersion: 1, requestId: request.requestId,
       status: "completed", html, finalURL: page.url(), requestCount, transferredBytes,
+      ...(screenshotBase64 ? {screenshotBase64} : {}),screenshotTruncated,viewport:"1280x720",engineVersion:`playwright-1.62.0/chromium`,consoleMessages,resourceFailures,accessibility,
     };
   } catch (reason) {
     return {
@@ -153,6 +172,9 @@ async function render(request: RenderRequest): Promise<RenderResponse> {
     await context?.close().catch(() => undefined);
   }
 }
+
+function redactURL(value:string):string { try { const parsed=new URL(value); parsed.search=""; parsed.hash=""; return parsed.toString(); } catch { return "[invalid-url]"; } }
+function redact(value:string):string { return value.replace(/https?:\/\/[^\s"'<>]+/gi,(url)=>redactURL(url)).replace(/\b(password|passwd|token|secret|authorization|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi,"$1=[redacted]"); }
 
 async function receive(value: unknown): Promise<void> {
   const message = value as SupervisorMessage;

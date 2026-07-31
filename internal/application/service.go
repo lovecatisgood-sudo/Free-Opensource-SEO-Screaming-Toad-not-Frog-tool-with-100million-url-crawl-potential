@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,9 +14,12 @@ import (
 	"github.com/seo-auditor/seo-auditor/internal/config"
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
 	"github.com/seo-auditor/seo-auditor/internal/crawler"
+	"github.com/seo-auditor/seo-auditor/internal/customaudit"
 	"github.com/seo-auditor/seo-auditor/internal/database"
 	"github.com/seo-auditor/seo-auditor/internal/fetchpolicy"
+	"github.com/seo-auditor/seo-auditor/internal/integrations"
 	"github.com/seo-auditor/seo-auditor/internal/renderer"
+	"github.com/seo-auditor/seo-auditor/internal/secretstore"
 )
 
 const UserAgent = "SEOAuditor/2.0 (+https://github.com/seo-auditor/seo-auditor)"
@@ -31,6 +35,8 @@ type Service struct {
 	artifactDir    string
 	rendererConfig config.Renderer
 	resolver       fetchpolicy.Resolver
+	secrets        secretstore.Store
+	integrations   integrations.Client
 }
 
 func Open(ctx context.Context, dataDirectory string) (*Service, error) {
@@ -53,7 +59,9 @@ func Open(ctx context.Context, dataDirectory string) (*Service, error) {
 		cancel()
 		return nil, err
 	}
-	service := &Service{db: db, frontier: database.NewFrontier(db, 1024), ctx: serviceCtx, cancel: cancel, active: make(map[contracts.ID]bool), artifactDir: artifactDir, rendererConfig: rendererConfig, resolver: fetchpolicy.SystemResolver{}}
+	secureStore := secretstore.NewPlatform()
+	service := &Service{db: db, frontier: database.NewFrontier(db, 1024), ctx: serviceCtx, cancel: cancel, active: make(map[contracts.ID]bool), artifactDir: artifactDir, rendererConfig: rendererConfig, resolver: fetchpolicy.SystemResolver{}, secrets: secureStore}
+	service.integrations = integrations.Client{Secrets: secureStore}
 	if err := service.frontier.RecoverInterruptedCrawls(ctx); err != nil {
 		service.frontier.Close()
 		_ = db.Close()
@@ -66,6 +74,8 @@ func Open(ctx context.Context, dataDirectory string) (*Service, error) {
 		cancel()
 		return nil, err
 	}
+	service.runs.Add(1)
+	go service.scheduleLoop()
 	return service, nil
 }
 
@@ -298,7 +308,27 @@ func (s *Service) buildPrepared(ctx context.Context, result CrawlResult, configu
 	fetchLimits.MaximumDecodedBytes = configuration.Limits.MaximumBodyBytes
 	fetchLimits.MaximumCompressedBytes = min(fetchLimits.MaximumCompressedBytes, configuration.Limits.MaximumBodyBytes)
 	fetchLimits.OmitAcceptEncoding = configuration.EffectiveResponseCompression() == "disabled"
-	rawFetcher, err := fetchpolicy.NewFetcher(guard, transport, fetchLimits, configuration.UserAgent)
+	var credentials *fetchpolicy.RequestCredentials
+	if configuration.Authentication.Mode != "" && configuration.Authentication.Mode != "none" {
+		secret, secretErr := s.secrets.Get(ctx, configuration.Authentication.CredentialReference)
+		if secretErr != nil {
+			transport.CloseIdleConnections()
+			return preparedCrawl{}, fmt.Errorf("load crawl credential reference: %w", secretErr)
+		}
+		credentials = &fetchpolicy.RequestCredentials{AllowedHosts: append([]string(nil), configuration.AllowedHosts...), AllowSubdomains: configuration.AllowSubdomains}
+		switch configuration.Authentication.Mode {
+		case "bearer":
+			credentials.Header, credentials.Value = "Authorization", "Bearer "+string(secret)
+		case "basic":
+			credentials.Header, credentials.Value = "Authorization", "Basic "+base64.StdEncoding.EncodeToString(append([]byte(configuration.Authentication.Username+":"), secret...))
+		case "cookie":
+			credentials.Header, credentials.Value = "Cookie", string(secret)
+		}
+		for index := range secret {
+			secret[index] = 0
+		}
+	}
+	rawFetcher, err := fetchpolicy.NewFetcherWithCredentials(guard, transport, fetchLimits, configuration.UserAgent, credentials)
 	if err != nil {
 		return preparedCrawl{}, err
 	}
@@ -374,10 +404,21 @@ func (s *Service) run(ctx context.Context, prepared preparedCrawl) error {
 		Frontier: s.frontier,
 		Fetcher:  crawler.RobotsEnforcingFetcher{Base: prepared.rawFetcher, Robots: prepared.robots},
 		Scope:    prepared.scope, LeaseTime: 2 * time.Minute, MaxLinksPerPage: 10_000,
-		Renderer: prepared.renderer,
+		Renderer:      prepared.renderer,
+		ArtifactStore: &managedRenderedArtifactStore{frontier: s.frontier, directory: s.artifactDir},
+	}
+	customRecords, err := s.frontier.ListCustomAuditDefinitions(ctx, prepared.result.ProjectID)
+	if err != nil {
+		return err
+	}
+	customDefinitions := make([]customaudit.Definition, 0, len(customRecords))
+	for _, record := range customRecords {
+		if record.Definition.Enabled {
+			customDefinitions = append(customDefinitions, record.Definition)
+		}
 	}
 	return engine.Run(ctx, crawler.RunRequest{
-		CrawlID: prepared.result.CrawlID, ProjectID: prepared.result.ProjectID, Limits: prepared.config.Limits, WorkerID: "local", RenderingMode: prepared.config.RenderingMode, NearDuplicateDistance: prepared.config.EffectiveNearDuplicateDistance(), SegmentSize: prepared.config.EffectiveSegmentSize(),
+		CrawlID: prepared.result.CrawlID, ProjectID: prepared.result.ProjectID, Limits: prepared.config.Limits, WorkerID: "local", RenderingMode: prepared.config.RenderingMode, NearDuplicateDistance: prepared.config.EffectiveNearDuplicateDistance(), SegmentSize: prepared.config.EffectiveSegmentSize(), CustomAudits: customDefinitions, RenderedEvidence: prepared.config.RenderedEvidence,
 	})
 }
 

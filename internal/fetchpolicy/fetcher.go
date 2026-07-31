@@ -75,13 +75,25 @@ type FetchResult struct {
 }
 
 type Fetcher struct {
-	guard     TargetValidator
-	client    *http.Client
-	limits    FetchLimits
-	userAgent string
+	guard       TargetValidator
+	client      *http.Client
+	limits      FetchLimits
+	userAgent   string
+	credentials *RequestCredentials
+}
+
+type RequestCredentials struct {
+	Header          string
+	Value           string
+	AllowedHosts    []string
+	AllowSubdomains bool
 }
 
 func NewFetcher(guard TargetValidator, transport http.RoundTripper, limits FetchLimits, userAgent string) (*Fetcher, error) {
+	return NewFetcherWithCredentials(guard, transport, limits, userAgent, nil)
+}
+
+func NewFetcherWithCredentials(guard TargetValidator, transport http.RoundTripper, limits FetchLimits, userAgent string, credentials *RequestCredentials) (*Fetcher, error) {
 	if guard == nil || transport == nil {
 		return nil, errors.New("target guard and transport are required")
 	}
@@ -91,6 +103,11 @@ func NewFetcher(guard TargetValidator, transport http.RoundTripper, limits Fetch
 	if userAgent == "" || len(userAgent) > 256 || strings.ContainsAny(userAgent, "\r\n") {
 		return nil, errors.New("user agent is invalid")
 	}
+	if credentials != nil {
+		if (credentials.Header != "Authorization" && credentials.Header != "Cookie") || credentials.Value == "" || strings.ContainsAny(credentials.Value, "\r\n") || len(credentials.Value) > 64<<10 || len(credentials.AllowedHosts) == 0 {
+			return nil, errors.New("request credentials are invalid")
+		}
+	}
 	return &Fetcher{
 		guard: guard,
 		client: &http.Client{
@@ -99,7 +116,7 @@ func NewFetcher(guard TargetValidator, transport http.RoundTripper, limits Fetch
 				return http.ErrUseLastResponse
 			},
 		},
-		limits: limits, userAgent: userAgent,
+		limits: limits, userAgent: userAgent, credentials: credentials,
 	}, nil
 }
 
@@ -119,6 +136,9 @@ func (f *Fetcher) Fetch(ctx context.Context, raw string) (FetchResult, error) {
 		}
 		request.Header.Set("User-Agent", f.userAgent)
 		request.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.1")
+		if f.credentials != nil && f.credentials.allows(target.URL.Hostname()) {
+			request.Header.Set(f.credentials.Header, f.credentials.Value)
+		}
 		if !f.limits.OmitAcceptEncoding {
 			request.Header.Set("Accept-Encoding", "gzip")
 		}
@@ -163,6 +183,17 @@ func (f *Fetcher) Fetch(ctx context.Context, raw string) (FetchResult, error) {
 		result.FinishedAt = time.Now().UTC()
 		return result, nil
 	}
+}
+
+func (c RequestCredentials) allows(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	for _, allowed := range c.AllowedHosts {
+		allowed = strings.ToLower(strings.TrimSuffix(allowed, "."))
+		if host == allowed || (c.AllowSubdomains && strings.HasSuffix(host, "."+allowed)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *Fetcher) readBody(response *http.Response) ([]byte, int64, int64, error) {

@@ -88,7 +88,7 @@ func PagesNDJSON(ctx context.Context, source QuerySource, crawlID contracts.ID, 
 
 func IssuesCSV(ctx context.Context, source QuerySource, crawlID contracts.ID, output io.Writer) error {
 	writer := csv.NewWriter(output)
-	if err := writer.Write([]string{"id", "rule_id", "rule_version", "subject_type", "subject_id", "severity", "evidence_json", "created_at"}); err != nil {
+	if err := writer.Write([]string{"id", "rule_id", "rule_version", "subject_type", "subject_id", "severity", "classification", "evidence_source", "evidence_json", "created_at"}); err != nil {
 		return err
 	}
 	cursor := ""
@@ -98,7 +98,7 @@ func IssuesCSV(ctx context.Context, source QuerySource, crawlID contracts.ID, ou
 			return err
 		}
 		for _, item := range page.Items {
-			row := []string{fmt.Sprint(item.ID), item.RuleID, fmt.Sprint(item.RuleVersion), item.SubjectType, item.SubjectID, item.Severity, item.EvidenceJSON, item.CreatedAt}
+			row := []string{fmt.Sprint(item.ID), item.RuleID, fmt.Sprint(item.RuleVersion), item.SubjectType, item.SubjectID, item.Severity, item.Classification, item.EvidenceSource, item.EvidenceJSON, item.CreatedAt}
 			for index := range row {
 				row[index] = spreadsheetSafe(row[index])
 			}

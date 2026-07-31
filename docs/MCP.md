@@ -72,6 +72,7 @@ Every `crawl_start` requires a caller-generated `idempotency_key` from 1 to 128 
 - `page_list` — searchable, paginated crawled pages.
 - `page_get` — bounded raw/rendered page, relationship and issue evidence.
 - `link_list` — paginated crawl-graph links.
+- `architecture_get` — bounded internal-link nodes and edges with depth, segment, link score and orphan evidence.
 - `crawl_compare` — added, removed, changed, new and fixed results between crawls.
 
 ### Managed artifacts
@@ -79,6 +80,21 @@ Every `crawl_start` requires a caller-generated `idempotency_key` from 1 to 128 
 - `report_export` — create CSV, NDJSON or XLSX reports in the application-owned artifact directory.
 - `diagnostic_create` — create a metadata-only support artifact.
 - `artifact_get` — retrieve artifact metadata and its approved managed path.
+- `custom_audit_put` — validate and save one bounded CSS/XPath extraction or finding definition.
+- `custom_audit_list` — list pre-approved definitions for a project.
+- `custom_audit_preview` — execute a bounded definition against caller-supplied HTML without contacting a target.
+- `custom_audit_results` — list versioned raw/rendered custom-audit results.
+
+### Integrations and recurring audits
+
+- `integration_observation_list` — list persisted lab, field and external API evidence.
+- `pagespeed_run` — explicitly send one authorized public URL to Google PageSpeed Insights.
+- `crux_run` — query URL/origin field data from the Chrome UX Report API.
+- `search_console_run` — query an authorized Search Console property.
+- `ga4_run` — query bounded GA4 landing-page metrics.
+- `schedule_create`, `schedule_list`, `schedule_delete` — manage recurring audits built from stored guarded profiles.
+
+Integration tools accept only pre-existing `secret_*` references. Raw API keys, OAuth tokens and client secrets must be enrolled through the local dashboard/API into the operating-system credential store; MCP never accepts or returns their values. External integration calls are marked open-world and may consume provider quota. Scheduled audits run only while the local application is open.
 
 MCP tools never accept an arbitrary output path.
 
@@ -112,7 +128,7 @@ Example profile input:
 
 ## Security boundary
 
-The MCP server exposes no generic shell, SQL, filesystem, browser or HTTP-fetch primitive. It cannot disable TLS verification, robots enforcement, target guards, redirect validation, response budgets or private-address rejection. It cannot supply arbitrary request headers, credentials, renderer executables or output paths.
+The MCP server exposes no generic shell, SQL, filesystem, browser or unrestricted HTTP-fetch primitive. It cannot disable TLS verification, robots enforcement, target guards, redirect validation, response budgets or private-address rejection. It cannot supply arbitrary request headers, credential values, renderer executables or output paths. Authenticated raw profiles can refer to an operator-enrolled OS credential by opaque reference; credentials remain host-bound and are never embedded in profile JSON.
 
 Starting and resuming crawls can contact authorized public targets and are marked as open-world mutations in MCP tool annotations. Read-only tools are explicitly annotated so compatible clients can distinguish inspection from mutation.
 

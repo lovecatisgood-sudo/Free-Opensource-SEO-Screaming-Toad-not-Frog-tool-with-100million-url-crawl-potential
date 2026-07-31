@@ -5,13 +5,25 @@ repository=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repository"
 
 version=${SEO_AUDITOR_VERSION:-2.0.0-rc.1}
+case "$version" in
+    ""|.*|-*|*[!0-9A-Za-z.-]*) echo "invalid release version" >&2; exit 1 ;;
+esac
+if [ "${#version}" -gt 80 ]; then
+    echo "release version is too long" >&2
+    exit 1
+fi
 commit=$(git rev-parse HEAD)
 source_epoch=${SOURCE_DATE_EPOCH:-$(git show -s --format=%ct HEAD)}
 built_at=$(date -u -d "@$source_epoch" +%Y-%m-%dT%H:%M:%SZ)
 release_root="$repository/.artifacts/release/$version"
 
+if [ -e "$release_root" ]; then
+    echo "release directory already exists: $release_root" >&2
+    exit 1
+fi
+
 mkdir -p "$release_root"
-pnpm --dir web/app build
+(cd web/app && ./node_modules/.bin/vite build)
 go test ./...
 go vet ./...
 

@@ -14,6 +14,12 @@ describe("local application policy", () => {
     expect(source.default).toContain("https://www.djai.academy/portfolio/en/");
     expect(source.default).toContain("https://school.djai.academy");
     expect(source.default).toContain("https://github.com/lovecatisgood-sudo");
+    expect(source.default).toContain("https://djai.academy");
+    expect(source.default).toContain("Siamese Cat Dev</a> from <a");
+    expect(source.default).toContain("DJAI Academy</a> &amp; With <a");
+    expect(source.default).toContain("DJAI Community</a>");
+    expect(source.default).toContain("Free-Opensource-SEO-Screaming-Toad-not-Frog-tool-with-100million-url-crawl-potential");
+    expect(source.default).toContain("Support this project on GitHub ★");
   });
 
   it("keeps raw-only audit summaries compatible with an absent rendering distribution", async () => {

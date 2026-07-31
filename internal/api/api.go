@@ -17,7 +17,9 @@ import (
 
 	"github.com/seo-auditor/seo-auditor/internal/application"
 	"github.com/seo-auditor/seo-auditor/internal/contracts"
+	"github.com/seo-auditor/seo-auditor/internal/customaudit"
 	"github.com/seo-auditor/seo-auditor/internal/database"
+	"github.com/seo-auditor/seo-auditor/internal/integrations"
 	"github.com/seo-auditor/seo-auditor/internal/version"
 )
 
@@ -54,6 +56,35 @@ type Backend interface {
 	Cancel(context.Context, contracts.ID) error
 	Pause(context.Context, contracts.ID) error
 	Resume(context.Context, contracts.ID) error
+}
+
+type customAuditBackend interface {
+	PutCustomAuditDefinition(context.Context, contracts.ID, customaudit.Definition) (database.CustomAuditDefinitionRecord, error)
+	ListCustomAuditDefinitions(context.Context, contracts.ID) ([]database.CustomAuditDefinitionRecord, error)
+	DeleteCustomAuditDefinition(context.Context, contracts.ID, string) error
+	PreviewCustomAudit(context.Context, customaudit.Definition, []byte) (customaudit.Result, error)
+	ExportCustomAudits(context.Context, contracts.ID) ([]byte, error)
+	ImportCustomAudits(context.Context, contracts.ID, []byte) ([]database.CustomAuditDefinitionRecord, error)
+	ListCustomAuditResults(context.Context, contracts.ID, string, contracts.PageRequest) (contracts.Page[database.CustomAuditResultRecord], error)
+}
+
+type integrationBackend interface {
+	PutSecret(context.Context, string, []byte) (application.SecretStatus, error)
+	DeleteSecret(context.Context, string) error
+	SecretStoreStatus(context.Context) (application.SecretStatus, error)
+	RunPageSpeed(context.Context, application.IntegrationContext, string, string) (database.IntegrationObservationRecord, error)
+	RunCrUX(context.Context, application.IntegrationContext, integrations.CrUXRequest) (database.IntegrationObservationRecord, error)
+	RunSearchConsole(context.Context, application.IntegrationContext, integrations.SearchConsoleRequest) (database.IntegrationObservationRecord, error)
+	RunGA4(context.Context, application.IntegrationContext, integrations.GA4Request) (database.IntegrationObservationRecord, error)
+	ListIntegrationObservations(context.Context, contracts.ID, string, contracts.PageRequest) (contracts.Page[database.IntegrationObservationRecord], error)
+}
+type architectureBackend interface {
+	Architecture(context.Context, contracts.ID, int, int) (database.ArchitectureGraph, error)
+}
+type scheduleBackend interface {
+	CreateSchedule(context.Context, contracts.ID, contracts.ID, string, int64, string) (database.ScheduledAuditRecord, error)
+	ListSchedules(context.Context, contracts.ID, contracts.PageRequest) (contracts.Page[database.ScheduledAuditRecord], error)
+	DeleteSchedule(context.Context, contracts.ID, contracts.ID) error
 }
 
 type Handler struct {
@@ -97,6 +128,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "local session is required")
 		return
 	}
+	if h.serveSecretRoute(w, r) {
+		return
+	}
 	if r.URL.Path == "/api/v1/projects" {
 		if r.Method == http.MethodGet {
 			page, err := pageRequest(r)
@@ -136,6 +170,143 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if h.serveProjectRoute(w, r, projectParts) {
 			return
 		}
+	}
+	if len(projectParts) >= 5 && projectParts[0] == "api" && projectParts[1] == "v1" && projectParts[2] == "projects" && projectParts[4] == "schedules" {
+		backend, ok := h.backend.(scheduleBackend)
+		if !ok {
+			writeError(w, http.StatusNotImplemented, "unsupported", "scheduled audits are unavailable")
+			return
+		}
+		projectID := contracts.ID(projectParts[3])
+		if len(projectParts) == 5 && r.Method == http.MethodGet {
+			page, err := pageRequest(r)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+				return
+			}
+			value, err := backend.ListSchedules(r.Context(), projectID, page)
+			respond(w, value, err)
+			return
+		}
+		if !h.mutationAllowed(r) {
+			writeError(w, http.StatusForbidden, "forbidden", "origin or CSRF validation failed")
+			return
+		}
+		if len(projectParts) == 5 && r.Method == http.MethodPost {
+			var input struct {
+				ProfileID       contracts.ID `json:"profile_id"`
+				Name            string       `json:"name"`
+				IntervalSeconds int64        `json:"interval_seconds"`
+				FirstRunAt      string       `json:"first_run_at,omitempty"`
+			}
+			if err := decodeBody(w, r, 32<<10, &input); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_argument", "invalid schedule request")
+				return
+			}
+			value, err := backend.CreateSchedule(r.Context(), projectID, input.ProfileID, input.Name, input.IntervalSeconds, input.FirstRunAt)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+				return
+			}
+			writeJSON(w, http.StatusCreated, value)
+			return
+		}
+		if len(projectParts) == 6 && r.Method == http.MethodDelete {
+			err := backend.DeleteSchedule(r.Context(), projectID, contracts.ID(projectParts[5]))
+			respond(w, map[string]bool{"deleted": err == nil}, err)
+			return
+		}
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	if len(projectParts) >= 5 && projectParts[0] == "api" && projectParts[1] == "v1" && projectParts[2] == "projects" && projectParts[4] == "custom-audits" {
+		backend, ok := h.backend.(customAuditBackend)
+		if !ok {
+			writeError(w, http.StatusNotImplemented, "unsupported", "custom audits are unavailable")
+			return
+		}
+		projectID := contracts.ID(projectParts[3])
+		if len(projectParts) == 5 && r.Method == http.MethodGet {
+			value, err := backend.ListCustomAuditDefinitions(r.Context(), projectID)
+			respond(w, value, err)
+			return
+		}
+		if len(projectParts) == 6 && projectParts[5] == "export" && r.Method == http.MethodGet {
+			value, err := backend.ExportCustomAudits(r.Context(), projectID)
+			if err != nil {
+				respond(w, nil, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(value)
+			return
+		}
+		if !h.mutationAllowed(r) {
+			writeError(w, http.StatusForbidden, "forbidden", "origin or CSRF validation failed")
+			return
+		}
+		if len(projectParts) == 5 && r.Method == http.MethodPut {
+			var definition customaudit.Definition
+			if err := decodeBody(w, r, 1<<20, &definition); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_argument", "invalid custom-audit definition")
+				return
+			}
+			value, err := backend.PutCustomAuditDefinition(r.Context(), projectID, definition)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, value)
+			return
+		}
+		if len(projectParts) == 6 && projectParts[5] == "import" && r.Method == http.MethodPost {
+			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_argument", "invalid custom-audit import")
+				return
+			}
+			value, err := backend.ImportCustomAudits(r.Context(), projectID, body)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, value)
+			return
+		}
+		if len(projectParts) == 6 && r.Method == http.MethodDelete {
+			err := backend.DeleteCustomAuditDefinition(r.Context(), projectID, projectParts[5])
+			respond(w, map[string]bool{"deleted": err == nil}, err)
+			return
+		}
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	if len(projectParts) >= 5 && projectParts[0] == "api" && projectParts[1] == "v1" && projectParts[2] == "projects" && projectParts[4] == "integrations" {
+		h.serveIntegrationRoute(w, r, projectParts)
+		return
+	}
+	if r.URL.Path == "/api/v1/custom-audits/preview" && r.Method == http.MethodPost {
+		backend, ok := h.backend.(customAuditBackend)
+		if !ok {
+			writeError(w, http.StatusNotImplemented, "unsupported", "custom audits are unavailable")
+			return
+		}
+		if !h.mutationAllowed(r) {
+			writeError(w, http.StatusForbidden, "forbidden", "origin or CSRF validation failed")
+			return
+		}
+		var input struct {
+			Definition customaudit.Definition `json:"definition"`
+			Document   string                 `json:"document"`
+		}
+		if err := decodeBody(w, r, 8<<20, &input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "invalid custom-audit preview")
+			return
+		}
+		value, err := backend.PreviewCustomAudit(r.Context(), input.Definition, []byte(input.Document))
+		respond(w, value, err)
+		return
 	}
 	if r.URL.Path == "/api/v1/crawls" && r.Method == http.MethodPost {
 		if !h.mutationAllowed(r) {
@@ -248,6 +419,47 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "crawls" && parts[4] == "architecture" && r.Method == http.MethodGet {
+		backend, ok := h.backend.(architectureBackend)
+		if !ok {
+			writeError(w, http.StatusNotImplemented, "unsupported", "architecture analysis is unavailable")
+			return
+		}
+		nodes, edges := 1000, 5000
+		var err error
+		if raw := r.URL.Query().Get("node_limit"); raw != "" {
+			nodes, err = strconv.Atoi(raw)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_argument", "node limit is invalid")
+				return
+			}
+		}
+		if raw := r.URL.Query().Get("edge_limit"); raw != "" {
+			edges, err = strconv.Atoi(raw)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_argument", "edge limit is invalid")
+				return
+			}
+		}
+		value, err := backend.Architecture(r.Context(), contracts.ID(parts[3]), nodes, edges)
+		respond(w, value, err)
+		return
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "crawls" && parts[4] == "custom-audits" && r.Method == http.MethodGet {
+		backend, ok := h.backend.(customAuditBackend)
+		if !ok {
+			writeError(w, http.StatusNotImplemented, "unsupported", "custom audits are unavailable")
+			return
+		}
+		page, err := pageRequest(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			return
+		}
+		value, err := backend.ListCustomAuditResults(r.Context(), contracts.ID(parts[3]), r.URL.Query().Get("definition_id"), page)
+		respond(w, value, err)
+		return
+	}
 	if len(parts) == 6 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "crawls" && parts[4] == "pages" && r.Method == http.MethodGet {
 		pageID, err := strconv.ParseInt(parts[5], 10, 64)
 		if err != nil || pageID < 1 {
@@ -351,6 +563,130 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		respond(w, value, err)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "route not found")
+	}
+}
+
+func (h *Handler) serveSecretRoute(w http.ResponseWriter, r *http.Request) bool {
+	if r.URL.Path != "/api/v1/secrets" && r.URL.Path != "/api/v1/secrets/status" {
+		return false
+	}
+	backend, ok := h.backend.(integrationBackend)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "unsupported", "secure integrations are unavailable")
+		return true
+	}
+	if r.URL.Path == "/api/v1/secrets/status" && r.Method == http.MethodGet {
+		value, err := backend.SecretStoreStatus(r.Context())
+		respond(w, value, err)
+		return true
+	}
+	if !h.mutationAllowed(r) {
+		writeError(w, http.StatusForbidden, "forbidden", "origin or CSRF validation failed")
+		return true
+	}
+	var input struct {
+		Reference string `json:"reference"`
+		Value     string `json:"value,omitempty"`
+	}
+	if err := decodeBody(w, r, 80<<10, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_argument", "invalid credential request")
+		return true
+	}
+	switch r.Method {
+	case http.MethodPut:
+		value, err := backend.PutSecret(r.Context(), input.Reference, []byte(input.Value))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			return true
+		}
+		writeJSON(w, http.StatusOK, value)
+	case http.MethodDelete:
+		err := backend.DeleteSecret(r.Context(), input.Reference)
+		respond(w, map[string]bool{"deleted": err == nil}, err)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+	}
+	return true
+}
+
+func (h *Handler) serveIntegrationRoute(w http.ResponseWriter, r *http.Request, parts []string) {
+	backend, ok := h.backend.(integrationBackend)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "unsupported", "external integrations are unavailable")
+		return
+	}
+	projectID := contracts.ID(parts[3])
+	if len(parts) == 6 && parts[5] == "observations" && r.Method == http.MethodGet {
+		page, err := pageRequest(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			return
+		}
+		value, err := backend.ListIntegrationObservations(r.Context(), projectID, r.URL.Query().Get("provider"), page)
+		respond(w, value, err)
+		return
+	}
+	if len(parts) != 6 || r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	if !h.mutationAllowed(r) {
+		writeError(w, http.StatusForbidden, "forbidden", "origin or CSRF validation failed")
+		return
+	}
+	provider := parts[5]
+	switch provider {
+	case "pagespeed":
+		var input struct {
+			CrawlID             contracts.ID `json:"crawl_id,omitempty"`
+			CredentialReference string       `json:"credential_reference,omitempty"`
+			Target              string       `json:"target"`
+			Strategy            string       `json:"strategy,omitempty"`
+		}
+		if err := decodeBody(w, r, 64<<10, &input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "invalid PageSpeed request")
+			return
+		}
+		value, err := backend.RunPageSpeed(r.Context(), application.IntegrationContext{ProjectID: projectID, CrawlID: input.CrawlID, CredentialReference: input.CredentialReference}, input.Target, input.Strategy)
+		respond(w, value, err)
+	case "crux":
+		var input struct {
+			CrawlID             contracts.ID             `json:"crawl_id,omitempty"`
+			CredentialReference string                   `json:"credential_reference"`
+			Request             integrations.CrUXRequest `json:"request"`
+		}
+		if err := decodeBody(w, r, 64<<10, &input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "invalid CrUX request")
+			return
+		}
+		value, err := backend.RunCrUX(r.Context(), application.IntegrationContext{ProjectID: projectID, CrawlID: input.CrawlID, CredentialReference: input.CredentialReference}, input.Request)
+		respond(w, value, err)
+	case "search-console":
+		var input struct {
+			CrawlID             contracts.ID                      `json:"crawl_id,omitempty"`
+			CredentialReference string                            `json:"credential_reference"`
+			Request             integrations.SearchConsoleRequest `json:"request"`
+		}
+		if err := decodeBody(w, r, 128<<10, &input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "invalid Search Console request")
+			return
+		}
+		value, err := backend.RunSearchConsole(r.Context(), application.IntegrationContext{ProjectID: projectID, CrawlID: input.CrawlID, CredentialReference: input.CredentialReference}, input.Request)
+		respond(w, value, err)
+	case "ga4":
+		var input struct {
+			CrawlID             contracts.ID            `json:"crawl_id,omitempty"`
+			CredentialReference string                  `json:"credential_reference"`
+			Request             integrations.GA4Request `json:"request"`
+		}
+		if err := decodeBody(w, r, 64<<10, &input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "invalid GA4 request")
+			return
+		}
+		value, err := backend.RunGA4(r.Context(), application.IntegrationContext{ProjectID: projectID, CrawlID: input.CrawlID, CredentialReference: input.CredentialReference}, input.Request)
+		respond(w, value, err)
+	default:
+		writeError(w, http.StatusNotFound, "not_found", "integration provider not found")
 	}
 }
 

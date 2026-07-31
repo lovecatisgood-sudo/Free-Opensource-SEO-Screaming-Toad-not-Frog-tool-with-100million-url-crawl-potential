@@ -23,7 +23,7 @@ import (
 
 const (
 	protocolVersion          = 1
-	maximumFrameBytes        = 8 << 20
+	maximumFrameBytes        = 12 << 20
 	maximumResourceBytes     = 5 << 20
 	maximumRenderedHTMLBytes = 4 << 20
 	maximumProtocolFrames    = 4_100
@@ -45,48 +45,84 @@ type Supervisor struct {
 }
 
 type Request struct {
-	RequestID       string
-	URL             string
-	Deadline        time.Duration
-	MaximumRequests int
-	MaximumBytes    int64
+	RequestID         string
+	URL               string
+	Deadline          time.Duration
+	MaximumRequests   int
+	MaximumBytes      int64
+	CaptureScreenshot bool
+	RunAccessibility  bool
+}
+
+type BrowserDiagnostic struct {
+	Level   string `json:"level"`
+	Message string `json:"message"`
+}
+type ResourceFailure struct {
+	ResourceType string `json:"resourceType"`
+	URL          string `json:"url"`
+	ErrorCode    string `json:"errorCode"`
+}
+type AccessibilityFinding struct {
+	RuleID string   `json:"ruleId"`
+	Impact string   `json:"impact"`
+	Tags   []string `json:"tags"`
+	Target string   `json:"target"`
+	HTML   string   `json:"html"`
+	Help   string   `json:"help"`
 }
 
 type Result struct {
-	Status           string
-	HTML             string
-	FinalURL         string
-	ErrorCode        string
-	RequestCount     int
-	TransferredBytes int64
+	Status              string
+	HTML                string
+	FinalURL            string
+	ErrorCode           string
+	RequestCount        int
+	TransferredBytes    int64
+	Screenshot          []byte
+	ScreenshotTruncated bool
+	Viewport            string
+	EngineVersion       string
+	ConsoleMessages     []BrowserDiagnostic
+	ResourceFailures    []ResourceFailure
+	Accessibility       []AccessibilityFinding
 }
 
 type wireRenderRequest struct {
-	Kind            string `json:"kind"`
-	ProtocolVersion int    `json:"protocolVersion"`
-	RequestID       string `json:"requestId"`
-	URL             string `json:"url"`
-	DeadlineMS      int64  `json:"deadlineMs"`
-	MaximumRequests int    `json:"maximumRequests"`
-	MaximumBytes    int64  `json:"maximumBytes"`
+	Kind              string `json:"kind"`
+	ProtocolVersion   int    `json:"protocolVersion"`
+	RequestID         string `json:"requestId"`
+	URL               string `json:"url"`
+	DeadlineMS        int64  `json:"deadlineMs"`
+	MaximumRequests   int    `json:"maximumRequests"`
+	MaximumBytes      int64  `json:"maximumBytes"`
+	CaptureScreenshot bool   `json:"captureScreenshot,omitempty"`
+	RunAccessibility  bool   `json:"runAccessibility,omitempty"`
 }
 
 type wireMessage struct {
-	Kind             string            `json:"kind"`
-	ProtocolVersion  int               `json:"protocolVersion"`
-	RequestID        string            `json:"requestId"`
-	FetchID          string            `json:"fetchId"`
-	URL              string            `json:"url"`
-	ResourceType     string            `json:"resourceType"`
-	Status           string            `json:"status"`
-	StatusCode       int               `json:"statusCode,omitempty"`
-	Headers          map[string]string `json:"headers,omitempty"`
-	BodyBase64       string            `json:"bodyBase64,omitempty"`
-	HTML             string            `json:"html,omitempty"`
-	FinalURL         string            `json:"finalURL,omitempty"`
-	RequestCount     int               `json:"requestCount,omitempty"`
-	TransferredBytes int64             `json:"transferredBytes,omitempty"`
-	ErrorCode        string            `json:"errorCode,omitempty"`
+	Kind                string                 `json:"kind"`
+	ProtocolVersion     int                    `json:"protocolVersion"`
+	RequestID           string                 `json:"requestId"`
+	FetchID             string                 `json:"fetchId"`
+	URL                 string                 `json:"url"`
+	ResourceType        string                 `json:"resourceType"`
+	Status              string                 `json:"status"`
+	StatusCode          int                    `json:"statusCode,omitempty"`
+	Headers             map[string]string      `json:"headers,omitempty"`
+	BodyBase64          string                 `json:"bodyBase64,omitempty"`
+	HTML                string                 `json:"html,omitempty"`
+	FinalURL            string                 `json:"finalURL,omitempty"`
+	RequestCount        int                    `json:"requestCount,omitempty"`
+	TransferredBytes    int64                  `json:"transferredBytes,omitempty"`
+	ErrorCode           string                 `json:"errorCode,omitempty"`
+	ScreenshotBase64    string                 `json:"screenshotBase64,omitempty"`
+	ScreenshotTruncated bool                   `json:"screenshotTruncated,omitempty"`
+	Viewport            string                 `json:"viewport,omitempty"`
+	EngineVersion       string                 `json:"engineVersion,omitempty"`
+	ConsoleMessages     []BrowserDiagnostic    `json:"consoleMessages,omitempty"`
+	ResourceFailures    []ResourceFailure      `json:"resourceFailures,omitempty"`
+	Accessibility       []AccessibilityFinding `json:"accessibility,omitempty"`
 }
 
 func (s *Supervisor) Render(ctx context.Context, request Request) (Result, error) {
@@ -149,6 +185,7 @@ func (s *Supervisor) Render(ctx context.Context, request Request) (Result, error
 		RequestID: request.RequestID, URL: request.URL,
 		DeadlineMS:      request.Deadline.Milliseconds(),
 		MaximumRequests: request.MaximumRequests, MaximumBytes: request.MaximumBytes,
+		CaptureScreenshot: request.CaptureScreenshot, RunAccessibility: request.RunAccessibility,
 	}
 	if err := writeFrame(writer, initial); err != nil {
 		return Result{}, err
@@ -204,6 +241,17 @@ func (s *Supervisor) Render(ctx context.Context, request Request) (Result, error
 			if message.RequestCount < 0 || message.RequestCount > request.MaximumRequests || message.TransferredBytes < 0 || message.TransferredBytes > transferred {
 				return Result{}, errors.New("renderer returned invalid accounting")
 			}
+			if len(message.ConsoleMessages) > 100 || len(message.ResourceFailures) > 100 || len(message.Accessibility) > 100 {
+				return Result{}, errors.New("renderer diagnostic count exceeds limit")
+			}
+			var screenshot []byte
+			if message.ScreenshotBase64 != "" {
+				decoded, decodeErr := base64.StdEncoding.DecodeString(message.ScreenshotBase64)
+				if decodeErr != nil || len(decoded) > 2<<20 {
+					return Result{}, errors.New("renderer screenshot is invalid or exceeds limit")
+				}
+				screenshot = decoded
+			}
 			_ = stdin.Close()
 			waitErr := command.Wait()
 			waited = true
@@ -214,6 +262,7 @@ func (s *Supervisor) Render(ctx context.Context, request Request) (Result, error
 				Status: message.Status, HTML: message.HTML, FinalURL: message.FinalURL,
 				ErrorCode: message.ErrorCode, RequestCount: message.RequestCount,
 				TransferredBytes: message.TransferredBytes,
+				Screenshot:       screenshot, ScreenshotTruncated: message.ScreenshotTruncated, Viewport: message.Viewport, EngineVersion: message.EngineVersion, ConsoleMessages: message.ConsoleMessages, ResourceFailures: message.ResourceFailures, Accessibility: message.Accessibility,
 			}, nil
 		default:
 			return Result{}, errors.New("renderer sent an unsupported message")

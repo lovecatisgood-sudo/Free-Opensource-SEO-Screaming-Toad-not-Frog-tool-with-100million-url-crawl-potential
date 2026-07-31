@@ -43,39 +43,71 @@ type StructuredDataRecord struct {
 	EvidenceJSON string `json:"evidence_json"`
 }
 type PageDetail struct {
-	Page              PageRecord               `json:"page"`
-	Headings          []HeadingRecord          `json:"headings"`
-	Inlinks           []LinkRecord             `json:"inlinks"`
-	Outlinks          []LinkRecord             `json:"outlinks"`
-	Images            []ImageRecord            `json:"images"`
-	Hreflangs         []HreflangRecord         `json:"hreflang"`
-	StructuredData    []StructuredDataRecord   `json:"structured_data"`
-	Issues            []IssueRecord            `json:"issues"`
-	Rendered          *RenderedPageRecord      `json:"rendered,omitempty"`
-	RenderDifferences []RenderDifferenceRecord `json:"render_differences"`
+	Page              PageRecord                    `json:"page"`
+	Headings          []HeadingRecord               `json:"headings"`
+	Inlinks           []LinkRecord                  `json:"inlinks"`
+	Outlinks          []LinkRecord                  `json:"outlinks"`
+	Images            []ImageRecord                 `json:"images"`
+	Hreflangs         []HreflangRecord              `json:"hreflang"`
+	StructuredData    []StructuredDataRecord        `json:"structured_data"`
+	Issues            []IssueRecord                 `json:"issues"`
+	Rendered          *RenderedPageRecord           `json:"rendered,omitempty"`
+	RenderDifferences []RenderDifferenceRecord      `json:"render_differences"`
+	ConsoleMessages   []RenderConsoleRecord         `json:"console_messages"`
+	ResourceFailures  []RenderResourceFailureRecord `json:"resource_failures"`
+	Accessibility     []AccessibilityFindingRecord  `json:"accessibility"`
+	Artifacts         []PageArtifactRecord          `json:"artifacts"`
+}
+
+type RenderConsoleRecord struct {
+	Position int    `json:"position"`
+	Level    string `json:"level"`
+	Message  string `json:"message"`
+}
+type RenderResourceFailureRecord struct {
+	Position     int    `json:"position"`
+	ResourceType string `json:"resource_type"`
+	URL          string `json:"url"`
+	ErrorCode    string `json:"error_code"`
+}
+type AccessibilityFindingRecord struct {
+	Position      int      `json:"position"`
+	RuleID        string   `json:"rule_id"`
+	Impact        string   `json:"impact"`
+	Tags          []string `json:"tags"`
+	Target        string   `json:"target"`
+	HTML          string   `json:"html"`
+	Help          string   `json:"help"`
+	EngineVersion string   `json:"engine_version"`
 }
 
 type RenderedPageRecord struct {
-	ID               int64                      `json:"id"`
-	Status           string                     `json:"status"`
-	ErrorCode        string                     `json:"error_code,omitempty"`
-	FinalURL         string                     `json:"final_url,omitempty"`
-	RequestCount     int                        `json:"request_count"`
-	TransferredBytes int64                      `json:"transferred_bytes"`
-	Title            string                     `json:"title,omitempty"`
-	MetaDescription  string                     `json:"meta_description,omitempty"`
-	CanonicalURL     string                     `json:"canonical_url,omitempty"`
-	RobotsDirectives string                     `json:"robots_directives,omitempty"`
-	Language         string                     `json:"language,omitempty"`
-	TextLength       int                        `json:"text_length"`
-	ContentHash      string                     `json:"content_hash,omitempty"`
-	HTMLHash         string                     `json:"html_hash,omitempty"`
-	Headings         []extractor.Heading        `json:"headings"`
-	Images           []extractor.Image          `json:"images"`
-	Hreflangs        []extractor.Hreflang       `json:"hreflang"`
-	StructuredData   []extractor.StructuredData `json:"structured_data"`
-	Social           map[string]string          `json:"social"`
-	RenderedAt       string                     `json:"rendered_at"`
+	ID                   int64                      `json:"id"`
+	Status               string                     `json:"status"`
+	ErrorCode            string                     `json:"error_code,omitempty"`
+	FinalURL             string                     `json:"final_url,omitempty"`
+	RequestCount         int                        `json:"request_count"`
+	TransferredBytes     int64                      `json:"transferred_bytes"`
+	Title                string                     `json:"title,omitempty"`
+	MetaDescription      string                     `json:"meta_description,omitempty"`
+	CanonicalURL         string                     `json:"canonical_url,omitempty"`
+	RobotsDirectives     string                     `json:"robots_directives,omitempty"`
+	Language             string                     `json:"language,omitempty"`
+	TextLength           int                        `json:"text_length"`
+	ContentHash          string                     `json:"content_hash,omitempty"`
+	HTMLHash             string                     `json:"html_hash,omitempty"`
+	Headings             []extractor.Heading        `json:"headings"`
+	Images               []extractor.Image          `json:"images"`
+	Hreflangs            []extractor.Hreflang       `json:"hreflang"`
+	StructuredData       []extractor.StructuredData `json:"structured_data"`
+	Social               map[string]string          `json:"social"`
+	RenderedAt           string                     `json:"rendered_at"`
+	EngineVersion        string                     `json:"engine_version,omitempty"`
+	Viewport             string                     `json:"viewport,omitempty"`
+	ScreenshotStatus     string                     `json:"screenshot_status"`
+	ConsoleCount         int                        `json:"console_count"`
+	ResourceFailureCount int                        `json:"resource_failure_count"`
+	AccessibilityCount   int                        `json:"accessibility_count"`
 }
 
 type RenderDifferenceRecord struct {
@@ -100,6 +132,10 @@ FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url u ON u.id=cu.url_
 	result.StructuredData = []StructuredDataRecord{}
 	result.Issues = []IssueRecord{}
 	result.RenderDifferences = []RenderDifferenceRecord{}
+	result.ConsoleMessages = []RenderConsoleRecord{}
+	result.ResourceFailures = []RenderResourceFailureRecord{}
+	result.Accessibility = []AccessibilityFindingRecord{}
+	result.Artifacts = []PageArtifactRecord{}
 	if err := scanRows(ctx, f.db, `SELECT position,level,text FROM heading WHERE page_id=? ORDER BY position`, []any{pageID}, func(rows *sql.Rows) error {
 		var item HeadingRecord
 		if err := rows.Scan(&item.Position, &item.Level, &item.Text); err != nil {
@@ -160,9 +196,9 @@ FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url u ON u.id=cu.url_
 	}); err != nil {
 		return result, err
 	}
-	if err := scanRows(ctx, f.db, `SELECT id,rule_id,rule_version,subject_type,subject_id,severity,evidence_json,created_at FROM issue WHERE crawl_id=? AND ((subject_type='page' AND subject_id=CAST(? AS TEXT)) OR (subject_type='rendered_page' AND subject_id=CAST((SELECT rp.id FROM rendered_page rp JOIN page p ON p.crawl_url_id=rp.crawl_url_id WHERE p.id=?) AS TEXT))) ORDER BY id LIMIT 1000`, []any{crawlID, pageID, pageID}, func(rows *sql.Rows) error {
+	if err := scanRows(ctx, f.db, `SELECT id,rule_id,rule_version,subject_type,subject_id,severity,classification,evidence_source,evidence_json,created_at FROM issue WHERE crawl_id=? AND ((subject_type='page' AND subject_id=CAST(? AS TEXT)) OR (subject_type='rendered_page' AND subject_id=CAST((SELECT rp.id FROM rendered_page rp JOIN page p ON p.crawl_url_id=rp.crawl_url_id WHERE p.id=?) AS TEXT))) ORDER BY id LIMIT 1000`, []any{crawlID, pageID, pageID}, func(rows *sql.Rows) error {
 		var item IssueRecord
-		if err := rows.Scan(&item.ID, &item.RuleID, &item.RuleVersion, &item.SubjectType, &item.SubjectID, &item.Severity, &item.EvidenceJSON, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.RuleID, &item.RuleVersion, &item.SubjectType, &item.SubjectID, &item.Severity, &item.Classification, &item.EvidenceSource, &item.EvidenceJSON, &item.CreatedAt); err != nil {
 			return err
 		}
 		result.Issues = append(result.Issues, item)
@@ -172,10 +208,10 @@ FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url u ON u.id=cu.url_
 	}
 	var rendered RenderedPageRecord
 	var headingsJSON, imagesJSON, hreflangJSON, structuredJSON, socialJSON string
-	err = f.db.QueryRowContext(ctx, `SELECT id,status,error_code,final_url,request_count,transferred_bytes,COALESCE(title,''),COALESCE(meta_description,''),COALESCE(canonical_url,''),COALESCE(robots_directives,''),COALESCE(language,''),text_length,COALESCE(content_hash,''),COALESCE(html_hash,''),headings_json,images_json,hreflang_json,structured_data_json,social_json,rendered_at FROM rendered_page WHERE crawl_url_id=(SELECT crawl_url_id FROM page WHERE id=?)`, pageID).Scan(
+	err = f.db.QueryRowContext(ctx, `SELECT id,status,error_code,final_url,request_count,transferred_bytes,COALESCE(title,''),COALESCE(meta_description,''),COALESCE(canonical_url,''),COALESCE(robots_directives,''),COALESCE(language,''),text_length,COALESCE(content_hash,''),COALESCE(html_hash,''),headings_json,images_json,hreflang_json,structured_data_json,social_json,rendered_at,engine_version,viewport,screenshot_status,console_count,resource_failure_count,accessibility_count FROM rendered_page WHERE crawl_url_id=(SELECT crawl_url_id FROM page WHERE id=?)`, pageID).Scan(
 		&rendered.ID, &rendered.Status, &rendered.ErrorCode, &rendered.FinalURL, &rendered.RequestCount, &rendered.TransferredBytes,
 		&rendered.Title, &rendered.MetaDescription, &rendered.CanonicalURL, &rendered.RobotsDirectives, &rendered.Language,
-		&rendered.TextLength, &rendered.ContentHash, &rendered.HTMLHash, &headingsJSON, &imagesJSON, &hreflangJSON, &structuredJSON, &socialJSON, &rendered.RenderedAt)
+		&rendered.TextLength, &rendered.ContentHash, &rendered.HTMLHash, &headingsJSON, &imagesJSON, &hreflangJSON, &structuredJSON, &socialJSON, &rendered.RenderedAt, &rendered.EngineVersion, &rendered.Viewport, &rendered.ScreenshotStatus, &rendered.ConsoleCount, &rendered.ResourceFailureCount, &rendered.AccessibilityCount)
 	if err != nil && err != sql.ErrNoRows {
 		return result, err
 	}
@@ -190,6 +226,50 @@ FROM page p JOIN crawl_url cu ON cu.id=p.crawl_url_id JOIN url u ON u.id=cu.url_
 				return err
 			}
 			result.RenderDifferences = append(result.RenderDifferences, item)
+			return nil
+		}); err != nil {
+			return result, err
+		}
+		if err := scanRows(ctx, f.db, `SELECT position,level,message FROM render_console WHERE crawl_url_id=(SELECT crawl_url_id FROM page WHERE id=?) ORDER BY position`, []any{pageID}, func(rows *sql.Rows) error {
+			var item RenderConsoleRecord
+			if err := rows.Scan(&item.Position, &item.Level, &item.Message); err != nil {
+				return err
+			}
+			result.ConsoleMessages = append(result.ConsoleMessages, item)
+			return nil
+		}); err != nil {
+			return result, err
+		}
+		if err := scanRows(ctx, f.db, `SELECT position,resource_type,url,error_code FROM render_resource_failure WHERE crawl_url_id=(SELECT crawl_url_id FROM page WHERE id=?) ORDER BY position`, []any{pageID}, func(rows *sql.Rows) error {
+			var item RenderResourceFailureRecord
+			if err := rows.Scan(&item.Position, &item.ResourceType, &item.URL, &item.ErrorCode); err != nil {
+				return err
+			}
+			result.ResourceFailures = append(result.ResourceFailures, item)
+			return nil
+		}); err != nil {
+			return result, err
+		}
+		if err := scanRows(ctx, f.db, `SELECT position,rule_id,impact,tags_json,target,html,help,engine_version FROM accessibility_finding WHERE crawl_url_id=(SELECT crawl_url_id FROM page WHERE id=?) ORDER BY position`, []any{pageID}, func(rows *sql.Rows) error {
+			var item AccessibilityFindingRecord
+			var tags string
+			if err := rows.Scan(&item.Position, &item.RuleID, &item.Impact, &tags, &item.Target, &item.HTML, &item.Help, &item.EngineVersion); err != nil {
+				return err
+			}
+			if err := json.Unmarshal([]byte(tags), &item.Tags); err != nil {
+				return err
+			}
+			result.Accessibility = append(result.Accessibility, item)
+			return nil
+		}); err != nil {
+			return result, err
+		}
+		if err := scanRows(ctx, f.db, `SELECT a.id,a.crawl_id,a.format,a.relative_path,a.checksum,a.size_bytes,a.created_at,COALESCE(a.expires_at,''),pa.crawl_url_id,pa.kind,pa.mime_type,pa.viewport,pa.engine_version FROM artifact a JOIN page_artifact pa ON pa.artifact_id=a.id WHERE pa.crawl_url_id=(SELECT crawl_url_id FROM page WHERE id=?) ORDER BY pa.kind`, []any{pageID}, func(rows *sql.Rows) error {
+			var item PageArtifactRecord
+			if err := rows.Scan(&item.ID, &item.CrawlID, &item.Format, &item.RelativePath, &item.Checksum, &item.SizeBytes, &item.CreatedAt, &item.ExpiresAt, &item.CrawlURLID, &item.Kind, &item.MIMEType, &item.Viewport, &item.EngineVersion); err != nil {
+				return err
+			}
+			result.Artifacts = append(result.Artifacts, item)
 			return nil
 		}); err != nil {
 			return result, err
