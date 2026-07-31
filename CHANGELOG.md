@@ -28,6 +28,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Extended API, database, report, renderer, dashboard, and rule contracts to retain and expose evidence provenance, rendered diagnostics, integrations, schedules, custom audits, and architecture data.
 - Updated the dashboard, public documentation, release guidance, rule catalog, and embedded production assets for the expanded professional-quality feature set.
 - Shortened course paths and removed Windows-forbidden filename characters so the repository can be checked out consistently across supported platforms.
+- Reworked renderer worker supervision so crashed Node processes are detected and reaped promptly on Windows without waiting for the outer render deadline.
 
 ### Security
 

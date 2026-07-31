@@ -170,11 +170,15 @@ func (s *Supervisor) Render(ctx context.Context, request Request) (Result, error
 	if err := command.Start(); err != nil {
 		return Result{}, err
 	}
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- command.Wait()
+	}()
 	waited := false
 	defer func() {
 		if !waited && command.Process != nil {
 			_ = command.Process.Kill()
-			_ = command.Wait()
+			<-waitCh
 		}
 	}()
 
@@ -194,9 +198,32 @@ func (s *Supervisor) Render(ctx context.Context, request Request) (Result, error
 	requests := 0
 	var transferred int64
 	for frames := 0; frames < maximumProtocolFrames; frames++ {
+		type frameResult struct {
+			message wireMessage
+			err     error
+		}
+		frameCh := make(chan frameResult, 1)
+		go func() {
+			var message wireMessage
+			err := readFrame(reader, &message)
+			frameCh <- frameResult{message: message, err: err}
+		}()
+
 		var message wireMessage
-		if err := readFrame(reader, &message); err != nil {
-			return Result{}, fmt.Errorf("renderer protocol: %w", err)
+		select {
+		case frame := <-frameCh:
+			if frame.err != nil {
+				return Result{}, fmt.Errorf("renderer protocol: %w", frame.err)
+			}
+			message = frame.message
+		case waitErr := <-waitCh:
+			waited = true
+			if waitErr != nil {
+				return Result{}, fmt.Errorf("renderer exited before returning a result: %w: %s", waitErr, stderr.String())
+			}
+			return Result{}, errors.New("renderer exited before returning a result")
+		case <-runCtx.Done():
+			return Result{}, fmt.Errorf("renderer deadline: %w", runCtx.Err())
 		}
 		if message.ProtocolVersion != protocolVersion || message.RequestID != request.RequestID {
 			return Result{}, errors.New("renderer protocol identity mismatch")
@@ -253,7 +280,7 @@ func (s *Supervisor) Render(ctx context.Context, request Request) (Result, error
 				screenshot = decoded
 			}
 			_ = stdin.Close()
-			waitErr := command.Wait()
+			waitErr := <-waitCh
 			waited = true
 			if waitErr != nil && message.Status == "completed" {
 				return Result{}, fmt.Errorf("renderer exited unsuccessfully: %s", stderr.String())
