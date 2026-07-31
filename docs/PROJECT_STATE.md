@@ -52,14 +52,14 @@ An English and a separately authored Thai community course now exist under `docs
 
 English course root:
 
-- `docs/course/Course 4: SEO & ASO with AI Agent - top rank your site on search/`
+- `docs/course/en-seo-aso-ai-agent/`
 - `COURSE_OVERVIEW.md` records the timing, learning outcome and claim guardrails.
 - `SCREENSHOT_PLAN.md` maps 26 planned core-course visual assets: eight existing dashboard captures and 18 planned new captures. The planned local Screaming Frog comparison uses installed SEO Spider 24.3, the same authorized target, comparable raw scope and a maximum of 500 URLs. These additional core-course captures have not yet been taken.
 - Each of the 12 lessons has its own folder and `SCRIPT.md`; every module has `MODULE_QUIZ.md`; `FINAL_QUIZ.md` contains the final assessment.
 
 Thai course root:
 
-- `docs/course/Thai Course 4 - SEO & ASO with AI Agent - ดันเว็บไซต์ให้เด่นบน Search/`
+- `docs/course/th-seo-aso-ai-agent/`
 - The Thai scripts are original Thai teaching copy based only on the course outline, not sentence-by-sentence translations. They use a natural male-instructor voice, Thai production directions and the technical English terms students will see in the product.
 - It contains 12 lesson folders, five Thai module quizzes, a Thai final quiz and an original Thai version of the real-world bonus lesson.
 - The Thai bonus references the verified English-course screenshots and workbook instead of duplicating binary assets.
@@ -89,8 +89,8 @@ Practical review deliberately differs from raw severity. All eight AUD-05 URLs u
 
 Published course evidence:
 
-- English bonus lesson: `Bonus Lesson - Real World DJAI Academy Audit/SCRIPT.md`;
-- evidence-backed Markdown audit: `Bonus Lesson - Real World DJAI Academy Audit/AUDIT_REPORT.md`;
+- English bonus lesson: `docs/course/en-seo-aso-ai-agent/bonus-djai-audit/SCRIPT.md`;
+- evidence-backed Markdown audit: `docs/course/en-seo-aso-ai-agent/bonus-djai-audit/AUDIT_REPORT.md`;
 - seven genuine dashboard captures under its `ASSETS/screenshots/` folder;
 - managed XLSX workbook: `ASSETS/reports/djai-academy-live-audit-2026-07-30.xlsx`;
 - workbook SHA-256: `0255dbd3f7dab4fe32add3777ce122cff2bce3c31a59affac43f4c7ef82ae44b`;
@@ -168,13 +168,13 @@ Hostinger returned HTTP 403 whenever the client explicitly sent an `Accept-Encod
 ## Resume order
 
 1. Read `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/QUALITY_ROADMAP.md`, `docs/COMMERCIAL_QUALITY_PLAN.md`, `docs/PROFESSIONAL_PRODUCT_PLAN.md`, `docs/PROFESSIONAL_IMPLEMENTATION_PLAN.md`, this checkpoint, both course overview files and the segmented campaign report.
-2. Review the uncommitted English/Thai course scripts, seven bonus screenshots, workbook and capture helper before staging or committing them.
+2. Review the committed English/Thai course scripts, seven bonus screenshots, workbook and capture helper before continuing course production.
 3. If continuing course production, capture only the remaining items in the English `SCREENSHOT_PLAN.md`; do not recapture or duplicate the completed bonus assets without a reason.
 4. Obtain more authorized beta targets and retain comparison evidence. Do not run large crawls against third-party sites without explicit owner authorization and an approved rate/scope/window.
 5. Obtain clean macOS/Windows environments and organisation-owned Apple/Windows signing identities before promoting a candidate to stable.
 6. Expand the deliberately partial expert capabilities only with reviewed fixtures: additional Google search-feature profiles, full PDF parsing, perceptual image analysis, Search Console URL Inspection/sitemap enrichment and local Lighthouse isolation.
 7. Treat any additional multi-million or distributed campaigns as separately approved optional research.
 
-Current Git state at this checkpoint: local `main` is one commit ahead of `origin/main` at `ec23406`; the course tree, capture helper, commercial-quality plan, professional product/implementation plans, documentation index and this state update are uncommitted. The previously committed footer work remains clean. Because `main` is protected, publish new work through a branch and pull request rather than a direct push.
+Current Git state at this checkpoint: the professional implementation and course materials are committed on `release/professional-seo-audit-rc` and published through pull request 7 into the protected `main` branch. Course paths use short cross-platform directory names, and CI enforces repository path portability.
 
 The ignored `open-seo-crawler/` reference remains untrusted and must not be installed, executed or copied. SEonaut was used only as design inspiration; project source remains original.

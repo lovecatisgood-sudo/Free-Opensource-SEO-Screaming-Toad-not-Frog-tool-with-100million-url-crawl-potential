@@ -9,6 +9,13 @@ permissions:
   contents: read
 
 jobs:
+  path-portability:
+    name: Repository paths
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: scripts/check-portable-paths.sh
+
   go:
     name: Go (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
