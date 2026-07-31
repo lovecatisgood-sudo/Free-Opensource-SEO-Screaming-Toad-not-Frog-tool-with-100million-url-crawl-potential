@@ -10,5 +10,5 @@ Capture helper: `scripts/capture-course-bonus.mjs`
 
 The results panel images are rectangular presentation crops of the genuine live dashboard. No issue counts, evidence, states, or labels were modified. No private credentials, cookies, or client data are visible.
 
-Managed workbook: `reports/djai-academy-live-audit-2026-07-30.xlsx`
+Managed workbook: `reports/djai-audit-2026-07-30.xlsx`
 SHA-256: `0255dbd3f7dab4fe32add3777ce122cff2bce3c31a59affac43f4c7ef82ae44b`

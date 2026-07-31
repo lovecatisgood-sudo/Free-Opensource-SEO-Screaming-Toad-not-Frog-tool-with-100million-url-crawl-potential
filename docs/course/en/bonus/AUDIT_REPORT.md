@@ -6,7 +6,7 @@ Authorization basis: course owner previously identified DJAI Academy as their we
 Tool: SEO Screaming Toad `2.0.0-rc.4` release candidate
 Crawl ID: `crawl_425921818cae33f4a03a417f7880cd3e`
 
-Managed workbook: [`ASSETS/reports/djai-academy-live-audit-2026-07-30.xlsx`](ASSETS/reports/djai-academy-live-audit-2026-07-30.xlsx)
+Managed workbook: [`assets/reports/djai-audit-2026-07-30.xlsx`](assets/reports/djai-audit-2026-07-30.xlsx)
 Workbook SHA-256: `0255dbd3f7dab4fe32add3777ce122cff2bce3c31a59affac43f4c7ef82ae44b`
 
 ## Scope and configuration

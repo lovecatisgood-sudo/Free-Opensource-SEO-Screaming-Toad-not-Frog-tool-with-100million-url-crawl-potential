@@ -3,7 +3,7 @@
 set -euo pipefail
 export LC_ALL=C
 
-maximum_bytes="${MAX_PORTABLE_PATH_BYTES:-180}"
+maximum_bytes="${MAX_PORTABLE_PATH_BYTES:-80}"
 invalid=0
 
 while IFS= read -r -d '' path; do

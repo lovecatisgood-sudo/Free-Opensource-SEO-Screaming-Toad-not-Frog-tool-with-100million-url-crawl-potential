@@ -152,13 +152,13 @@ Use a custom animation showing campaign coordinator, durable frontier, bounded U
 6. `06-live-page-inventory.png` — real 200-status page inventory with raw titles and rendered mode clearly not requested.
 7. `07-live-crawl-history.png` — durable completed crawl record.
 
-These images live beneath the bonus lesson's `ASSETS/screenshots/` folder. They use genuine data from the authorized `www.djai.academy` raw crawl completed on 2026-07-30.
+These images live beneath the bonus lesson's `assets/screens/` folder. They use genuine data from the authorized `www.djai.academy` raw crawl completed on 2026-07-30.
 
 ## New screenshot storage structure
 
 ```text
-ASSETS/
-  screenshots/
+assets/
+  screens/
     lesson-03/
     lesson-04/
     lesson-05/

@@ -52,14 +52,14 @@ An English and a separately authored Thai community course now exist under `docs
 
 English course root:
 
-- `docs/course/en-seo-aso-ai-agent/`
+- `docs/course/en/`
 - `COURSE_OVERVIEW.md` records the timing, learning outcome and claim guardrails.
 - `SCREENSHOT_PLAN.md` maps 26 planned core-course visual assets: eight existing dashboard captures and 18 planned new captures. The planned local Screaming Frog comparison uses installed SEO Spider 24.3, the same authorized target, comparable raw scope and a maximum of 500 URLs. These additional core-course captures have not yet been taken.
 - Each of the 12 lessons has its own folder and `SCRIPT.md`; every module has `MODULE_QUIZ.md`; `FINAL_QUIZ.md` contains the final assessment.
 
 Thai course root:
 
-- `docs/course/th-seo-aso-ai-agent/`
+- `docs/course/th/`
 - The Thai scripts are original Thai teaching copy based only on the course outline, not sentence-by-sentence translations. They use a natural male-instructor voice, Thai production directions and the technical English terms students will see in the product.
 - It contains 12 lesson folders, five Thai module quizzes, a Thai final quiz and an original Thai version of the real-world bonus lesson.
 - The Thai bonus references the verified English-course screenshots and workbook instead of duplicating binary assets.
@@ -89,10 +89,10 @@ Practical review deliberately differs from raw severity. All eight AUD-05 URLs u
 
 Published course evidence:
 
-- English bonus lesson: `docs/course/en-seo-aso-ai-agent/bonus-djai-audit/SCRIPT.md`;
-- evidence-backed Markdown audit: `docs/course/en-seo-aso-ai-agent/bonus-djai-audit/AUDIT_REPORT.md`;
-- seven genuine dashboard captures under its `ASSETS/screenshots/` folder;
-- managed XLSX workbook: `ASSETS/reports/djai-academy-live-audit-2026-07-30.xlsx`;
+- English bonus lesson: `docs/course/en/bonus/SCRIPT.md`;
+- evidence-backed Markdown audit: `docs/course/en/bonus/AUDIT_REPORT.md`;
+- seven genuine dashboard captures under its `assets/screens/` folder;
+- managed XLSX workbook: `assets/reports/djai-audit-2026-07-30.xlsx`;
 - workbook SHA-256: `0255dbd3f7dab4fe32add3777ce122cff2bce3c31a59affac43f4c7ef82ae44b`;
 - reproducible capture helper: `scripts/capture-course-bonus.mjs`.
 
