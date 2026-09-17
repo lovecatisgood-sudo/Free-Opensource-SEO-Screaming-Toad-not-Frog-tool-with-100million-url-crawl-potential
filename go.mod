@@ -3,7 +3,7 @@ module github.com/seo-auditor/seo-auditor
 go 1.26.5
 
 require (
-	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	golang.org/x/net v0.57.0
 	modernc.org/sqlite v1.55.0
 )
